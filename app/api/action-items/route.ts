@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
     const [created] = await db
       .insert(actionItems)
       .values({
-        id: crypto.randomUUID(),
         title,
         assignee: assignee ?? null,
         dueDate: dueDate ?? null,
