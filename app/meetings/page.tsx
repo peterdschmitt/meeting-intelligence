@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Loader2, CalendarDays, Calendar, Users, Building2, FileText, Mic, Cloud } from 'lucide-react';
-import { cn, formatRelativeDate } from '@/lib/utils';
 import Link from 'next/link';
+import { formatRelativeDate } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface MeetingCardData {
+interface MeetingItem {
   id: string;
   title: string;
   meetingDate: string | null;
@@ -17,8 +16,6 @@ export interface MeetingCardData {
   source: string | null;
   companyName?: string | null;
 }
-
-interface MeetingListItem extends MeetingCardData {}
 
 interface NewMeetingForm {
   title: string;
@@ -34,13 +31,13 @@ function isThisWeek(date: string | null): boolean {
   if (!date) return false;
   const d = new Date(date);
   const now = new Date();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  startOfWeek.setHours(0, 0, 0, 0);
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
-  endOfWeek.setHours(23, 59, 59, 999);
-  return d >= startOfWeek && d <= endOfWeek;
+  const start = new Date(now);
+  start.setDate(now.getDate() - now.getDay());
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return d >= start && d <= end;
 }
 
 function isThisMonth(date: string | null): boolean {
@@ -50,137 +47,21 @@ function isThisMonth(date: string | null): boolean {
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
 
-// ─── Source badge ──────────────────────────────────────────────────────────────
+const TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all',   label: 'All' },
+  { key: 'week',  label: 'This Week' },
+  { key: 'month', label: 'This Month' },
+];
 
-const sourceConfig: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  manual: { label: 'Manual', icon: FileText },
-  gdrive: { label: 'Google Drive', icon: Cloud },
-  voice:  { label: 'Voice', icon: Mic },
-};
+// ─── New Meeting Form ─────────────────────────────────────────────────────────
 
-function SourceBadge({ source }: { source: string | null }) {
-  const key = (source ?? 'manual') as keyof typeof sourceConfig;
-  const cfg = sourceConfig[key] ?? sourceConfig.manual;
-  const Icon = cfg.icon;
-  return (
-    <span className="badge badge-gray" style={{ fontSize: '0.6rem' }}>
-      <Icon className="w-2.5 h-2.5" />
-      {cfg.label}
-    </span>
-  );
-}
-
-// ─── Row item ─────────────────────────────────────────────────────────────────
-
-const rowVariants = {
-  hidden: { opacity: 0, y: 6 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' as const } },
-};
-
-function MeetingRow({ meeting }: { meeting: MeetingListItem }) {
-  const initials = (meeting.participants?.[0] ?? 'U')
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-
-  return (
-    <Link href={`/meetings/${meeting.id}`} className="block">
-      <motion.div
-        variants={rowVariants}
-        className="flex items-center gap-4 px-4 py-3 transition-colors cursor-pointer"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.025)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLDivElement).style.background = 'transparent';
-        }}
-      >
-        {/* Checkbox placeholder */}
-        <div
-          style={{
-            width: '16px',
-            height: '16px',
-            borderRadius: '4px',
-            border: '1px solid rgba(255,255,255,0.15)',
-            flexShrink: 0,
-          }}
-        />
-
-        {/* Title + source */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate" style={{ color: '#e6edf3' }}>
-            {meeting.title}
-          </p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <SourceBadge source={meeting.source} />
-            {meeting.companyName && (
-              <span className="flex items-center gap-1 text-xs" style={{ color: '#7d8590' }}>
-                <Building2 className="w-3 h-3" />
-                {meeting.companyName}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Date */}
-        <div className="shrink-0 flex items-center gap-1.5 text-xs" style={{ color: '#7d8590', minWidth: '100px' }}>
-          <Calendar className="w-3.5 h-3.5" />
-          {meeting.meetingDate ? formatRelativeDate(meeting.meetingDate) : '—'}
-        </div>
-
-        {/* Participants */}
-        <div className="shrink-0 flex items-center gap-1.5 text-xs" style={{ color: '#7d8590', minWidth: '120px' }}>
-          <Users className="w-3.5 h-3.5" />
-          {meeting.participants && meeting.participants.length > 0
-            ? meeting.participants.slice(0, 2).join(', ') +
-              (meeting.participants.length > 2 ? ` +${meeting.participants.length - 2}` : '')
-            : '—'}
-        </div>
-
-        {/* Assignee avatar */}
-        <div
-          className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-          style={{ background: '#2563eb', color: '#ffffff' }}
-          title={meeting.participants?.[0] ?? ''}
-        >
-          {initials}
-        </div>
-      </motion.div>
-    </Link>
-  );
-}
-
-// ─── Skeleton row ─────────────────────────────────────────────────────────────
-
-function SkeletonRow() {
-  return (
-    <div
-      className="flex items-center gap-4 px-4 py-3 animate-pulse"
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-    >
-      <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: 'rgba(255,255,255,0.07)' }} />
-      <div className="flex-1">
-        <div style={{ height: '12px', background: 'rgba(255,255,255,0.07)', borderRadius: '4px', width: '55%' }} />
-        <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', width: '30%', marginTop: '6px' }} />
-      </div>
-      <div style={{ height: '10px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', width: '80px' }} />
-      <div style={{ height: '10px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', width: '100px' }} />
-      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
-    </div>
-  );
-}
-
-// ─── New Meeting Inline Form ──────────────────────────────────────────────────
-
-interface NewMeetingFormProps {
+function NewMeetingInlineForm({
+  onClose,
+  onCreated,
+}: {
   onClose: () => void;
-  onCreated: (meeting: MeetingListItem) => void;
-}
-
-function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
+  onCreated: (m: MeetingItem) => void;
+}) {
   const [form, setForm] = useState<NewMeetingForm>({
     title: '',
     meetingDate: new Date().toISOString().slice(0, 16),
@@ -207,7 +88,7 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
         }),
       });
       if (!res.ok) throw new Error('Failed to create meeting');
-      const created: MeetingListItem = await res.json();
+      const created: MeetingItem = await res.json();
       onCreated(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -222,10 +103,20 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.18 }}
-      className="card"
-      style={{ padding: '20px', marginBottom: '16px', borderColor: 'rgba(37,99,235,0.3)' }}
+      style={{
+        background: '#121212',
+        border: '1px solid rgba(46,98,255,0.3)',
+        borderRadius: '0.75rem',
+        padding: '1.25rem',
+        marginBottom: '1rem',
+      }}
     >
-      <h3 className="text-sm font-semibold mb-4" style={{ color: '#e6edf3' }}>New Meeting</h3>
+      <h3
+        className="text-sm font-semibold"
+        style={{ color: '#f4f4f5', marginBottom: '1rem' }}
+      >
+        New Meeting
+      </h3>
       <form onSubmit={handleSubmit} className="space-y-3">
         <input
           autoFocus
@@ -233,54 +124,50 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
           placeholder="Meeting title *"
           value={form.title}
           onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          className="w-full rounded-md px-3 py-2 text-sm focus:outline-none transition"
-          style={{
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: '#e6edf3',
-          }}
+          className="stitch-input"
         />
         <div className="grid grid-cols-2 gap-3">
           <input
             type="datetime-local"
             value={form.meetingDate}
             onChange={(e) => setForm((f) => ({ ...f, meetingDate: e.target.value }))}
-            className="w-full rounded-md px-3 py-2 text-sm focus:outline-none transition"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#7d8590',
-            }}
+            className="stitch-input"
+            style={{ color: '#71717a' }}
           />
           <input
             type="text"
             placeholder="Participants (comma-separated)"
             value={form.participants}
             onChange={(e) => setForm((f) => ({ ...f, participants: e.target.value }))}
-            className="w-full rounded-md px-3 py-2 text-sm focus:outline-none transition"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#e6edf3',
-            }}
+            className="stitch-input"
           />
         </div>
-        {error && <p className="text-xs" style={{ color: '#f85149' }}>{error}</p>}
+        {error && (
+          <p style={{ color: '#ffb4ab', fontSize: '0.75rem' }}>{error}</p>
+        )}
         <div className="flex items-center gap-2 pt-1">
           <button
             type="submit"
             disabled={saving || !form.title.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: '#2563eb', color: '#ffffff' }}
+            className="btn-primary"
+            style={{ fontSize: '0.75rem', opacity: saving || !form.title.trim() ? 0.5 : 1 }}
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+              {saving ? 'hourglass_empty' : 'add'}
+            </span>
             {saving ? 'Creating…' : 'Create Meeting'}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm transition-colors"
-            style={{ color: '#7d8590' }}
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'none',
+              border: 'none',
+              color: '#71717a',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+            }}
           >
             Cancel
           </button>
@@ -290,18 +177,331 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
   );
 }
 
-// ─── Tab counts ───────────────────────────────────────────────────────────────
+// ─── Meeting Card (grid tile) ─────────────────────────────────────────────────
 
-const TABS: { key: FilterTab; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'week', label: 'This Week' },
-  { key: 'month', label: 'This Month' },
-];
+function MeetingCard({ meeting }: { meeting: MeetingItem }) {
+  const category = meeting.source ?? 'Manual';
+
+  return (
+    <Link href={`/meetings/${meeting.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <motion.div
+        whileHover={{ borderColor: 'rgba(59,130,246,0.3)' }}
+        className="meeting-card-sm"
+        style={{ cursor: 'pointer' }}
+      >
+        {/* Top */}
+        <div className="flex justify-between items-start" style={{ marginBottom: '1.5rem' }}>
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              background: '#18181b',
+              borderRadius: '0.5rem',
+              border: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ color: '#60a5fa', fontSize: '20px' }}
+            >
+              event_note
+            </span>
+          </div>
+          <span
+            className="text-mono-data"
+            style={{ color: '#71717a', fontSize: '10px', textTransform: 'uppercase' }}
+          >
+            {category}
+          </span>
+        </div>
+
+        {/* Title */}
+        <h3 className="text-h3" style={{ color: '#ffffff', marginBottom: '0.75rem' }}>
+          {meeting.title}
+        </h3>
+
+        {/* Summary */}
+        {meeting.aiSummary ? (
+          <p
+            style={{
+              color: '#71717a',
+              fontSize: '0.8125rem',
+              lineHeight: '1.5',
+              marginBottom: '1.5rem',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {meeting.aiSummary}
+          </p>
+        ) : (
+          <p
+            style={{
+              color: '#3f3f46',
+              fontSize: '0.8125rem',
+              fontStyle: 'italic',
+              marginBottom: '1.5rem',
+            }}
+          >
+            No summary yet
+          </p>
+        )}
+
+        {/* Footer */}
+        <div
+          style={{
+            marginTop: 'auto',
+            paddingTop: '1rem',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          {/* Participants */}
+          <div style={{ display: 'flex', gap: '-0.5rem' }}>
+            {meeting.participants && meeting.participants.length > 0 ? (
+              meeting.participants.slice(0, 3).map((p, i) => (
+                <div
+                  key={i}
+                  title={p}
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: '#2e62ff',
+                    border: '2px solid #121212',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    color: '#ffffff',
+                    marginLeft: i > 0 ? '-8px' : '0',
+                    position: 'relative',
+                    zIndex: 3 - i,
+                  }}
+                >
+                  {p.slice(0, 2).toUpperCase()}
+                </div>
+              ))
+            ) : (
+              <span style={{ color: '#3f3f46', fontSize: '11px' }}>No attendees</span>
+            )}
+          </div>
+          <span style={{ color: '#71717a', fontSize: '11px' }}>
+            {meeting.meetingDate ? formatRelativeDate(meeting.meetingDate) : '—'}
+          </span>
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+// ─── Featured Meeting Card ────────────────────────────────────────────────────
+
+function FeaturedMeetingCard({ meeting }: { meeting: MeetingItem }) {
+  return (
+    <Link href={`/meetings/${meeting.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div className="meeting-card-featured" style={{ height: '100%' }}>
+        {/* Live badge */}
+        <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem' }}>
+          <span
+            className="badge"
+            style={{
+              background: 'rgba(16,185,129,0.1)',
+              color: '#34d399',
+              border: '1px solid rgba(16,185,129,0.2)',
+              gap: '6px',
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#10b981',
+                display: 'inline-block',
+                animation: 'pulse 2s infinite',
+              }}
+            />
+            Latest
+          </span>
+        </div>
+
+        <div style={{ marginBottom: 'auto' }}>
+          {meeting.companyName && (
+            <span
+              className="text-mono-data"
+              style={{ color: '#3b82f6', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}
+            >
+              {meeting.companyName}
+            </span>
+          )}
+          <h2
+            style={{
+              fontSize: '2rem',
+              fontWeight: 600,
+              lineHeight: 1.15,
+              letterSpacing: '-0.03em',
+              color: '#ffffff',
+              marginBottom: '1rem',
+              maxWidth: '36rem',
+            }}
+          >
+            {meeting.title}
+          </h2>
+
+          {/* Meta */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+              color: '#71717a',
+              fontSize: '0.875rem',
+              marginBottom: '2rem',
+            }}
+          >
+            {meeting.meetingDate && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                  calendar_today
+                </span>
+                {formatRelativeDate(meeting.meetingDate)}
+              </span>
+            )}
+            {meeting.participants && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                  group
+                </span>
+                {meeting.participants.length} participants
+              </span>
+            )}
+          </div>
+
+          {/* AI Summary callout */}
+          {meeting.aiSummary && (
+            <div
+              style={{
+                borderLeft: '2px solid #3b82f6',
+                paddingLeft: '1rem',
+                marginBottom: '2rem',
+                background: 'rgba(255,255,255,0.03)',
+                padding: '1rem',
+                borderRadius: '0 0.5rem 0.5rem 0',
+              }}
+            >
+              <p
+                style={{
+                  color: '#d4d4d8',
+                  fontSize: '0.9375rem',
+                  lineHeight: '1.6',
+                  fontStyle: 'italic',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                &ldquo;{meeting.aiSummary}&rdquo;
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  marginTop: '0.75rem',
+                }}
+              >
+                <span
+                  style={{
+                    padding: '1px 6px',
+                    background: 'rgba(59,130,246,0.2)',
+                    color: '#60a5fa',
+                    borderRadius: '2px',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  AI Insight
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: '1rem',
+          }}
+        >
+          <div style={{ display: 'flex', marginLeft: '-8px' }}>
+            {meeting.participants?.slice(0, 4).map((p, i) => (
+              <div
+                key={i}
+                title={p}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: '#2e62ff',
+                  border: '2px solid #121212',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  marginLeft: i > 0 ? '-10px' : '8px',
+                  position: 'relative',
+                  zIndex: 4 - i,
+                }}
+              >
+                {p.slice(0, 2).toUpperCase()}
+              </div>
+            ))}
+          </div>
+          <button
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              color: '#ffffff',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            View Full Report
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+              arrow_forward
+            </span>
+          </button>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MeetingsPage() {
-  const [meetings, setMeetings] = useState<MeetingListItem[]>([]);
+  const [meetings, setMeetings] = useState<MeetingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -315,7 +515,7 @@ export default function MeetingsPage() {
       try {
         const res = await fetch('/api/meetings');
         if (!res.ok) throw new Error(`Server error: ${res.status}`);
-        const data: MeetingListItem[] = await res.json();
+        const data: MeetingItem[] = await res.json();
         setMeetings(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load meetings');
@@ -327,14 +527,14 @@ export default function MeetingsPage() {
   }, []);
 
   const counts = useMemo(() => ({
-    all: meetings.length,
-    week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
+    all:   meetings.length,
+    week:  meetings.filter((m) => isThisWeek(m.meetingDate)).length,
     month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
   }), [meetings]);
 
   const filtered = useMemo(() => {
     let list = meetings;
-    if (activeTab === 'week') list = list.filter((m) => isThisWeek(m.meetingDate));
+    if (activeTab === 'week')  list = list.filter((m) => isThisWeek(m.meetingDate));
     if (activeTab === 'month') list = list.filter((m) => isThisMonth(m.meetingDate));
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -349,34 +549,91 @@ export default function MeetingsPage() {
     return list;
   }, [meetings, activeTab, search]);
 
-  function handleCreated(meeting: MeetingListItem) {
+  function handleCreated(meeting: MeetingItem) {
     setMeetings((prev) => [meeting, ...prev]);
     setShowNewForm(false);
   }
 
+  const [featured, ...rest] = filtered;
+
   return (
-    <div style={{ padding: '32px 36px', maxWidth: '1100px' }}>
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ padding: '2rem', maxWidth: '1440px' }}>
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <div
+        className="flex flex-col md:flex-row md:items-end justify-between gap-6"
+        style={{ marginBottom: '3rem' }}
+      >
         <div>
-          <h1 className="font-bold" style={{ fontSize: '1.5rem', color: '#e6edf3' }}>Meetings</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#7d8590' }}>
-            Track and review your meeting notes
+          <h1 className="text-h2" style={{ color: '#ffffff', marginBottom: '0.5rem' }}>
+            Meeting Intelligence
+          </h1>
+          <p style={{ color: '#71717a', fontSize: '0.8125rem' }}>
+            Review synthesized transcripts and key deliverables from your latest deal flow
+            interactions.
           </p>
         </div>
-        <button
-          onClick={() => setShowNewForm((v) => !v)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors"
-          style={{ background: '#2563eb', color: '#ffffff' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#3b82f6'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#2563eb'; }}
-        >
-          <Plus className="w-4 h-4" />
-          New Meeting
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Filter tabs */}
+          <div className="filter-tabs">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`filter-tab${activeTab === tab.key ? ' active' : ''}`}
+              >
+                {tab.label}
+                <span
+                  style={{
+                    marginLeft: '4px',
+                    fontSize: '10px',
+                    color: activeTab === tab.key ? '#ffffff' : '#52525b',
+                  }}
+                >
+                  ({counts[tab.key]})
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* New Meeting button */}
+          <button
+            onClick={() => setShowNewForm((v) => !v)}
+            className="btn-primary"
+            style={{ fontSize: '0.8125rem' }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+            New Meeting
+          </button>
+        </div>
       </div>
 
-      {/* Inline new meeting form */}
+      {/* Search bar */}
+      <div style={{ position: 'relative', maxWidth: '400px', marginBottom: '1.5rem' }}>
+        <span
+          className="material-symbols-outlined"
+          style={{
+            position: 'absolute',
+            left: '0.75rem',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: '#52525b',
+            fontSize: '18px',
+          }}
+        >
+          search
+        </span>
+        <input
+          type="text"
+          placeholder="Search meetings…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="stitch-input"
+          style={{ paddingLeft: '2.5rem' }}
+        />
+      </div>
+
+      {/* New meeting form */}
       <AnimatePresence>
         {showNewForm && (
           <NewMeetingInlineForm
@@ -386,123 +643,105 @@ export default function MeetingsPage() {
         )}
       </AnimatePresence>
 
-      {/* Filter tabs + search */}
-      <div className="flex items-center justify-between gap-4 mb-4">
-        {/* Tabs */}
-        <div
-          className="flex items-center gap-0"
-          style={{
-            background: '#161b22',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '8px',
-            padding: '4px',
-          }}
-        >
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-              style={{
-                background: activeTab === tab.key ? '#1c2128' : 'transparent',
-                color: activeTab === tab.key ? '#e6edf3' : '#7d8590',
-              }}
-            >
-              {tab.label}
-              <span
-                className="badge"
-                style={
-                  activeTab === tab.key
-                    ? { background: '#2563eb', color: '#ffffff', border: 'none', padding: '1px 6px' }
-                    : { background: 'rgba(255,255,255,0.06)', color: '#7d8590', border: 'none', padding: '1px 6px' }
-                }
-              >
-                {counts[tab.key]}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative" style={{ width: '260px' }}>
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#484f58' }} />
-          <input
-            type="text"
-            placeholder="Search meetings…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md pl-9 pr-4 py-2 text-sm focus:outline-none transition"
-            style={{
-              background: '#161b22',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: '#e6edf3',
-            }}
-          />
-        </div>
-      </div>
-
       {/* Error */}
       {error && (
         <div
-          className="card mb-4 text-sm"
-          style={{ padding: '12px 16px', color: '#f85149', borderColor: 'rgba(248,81,73,0.2)' }}
+          style={{
+            padding: '0.75rem 1rem',
+            background: 'rgba(255,180,171,0.1)',
+            border: '1px solid rgba(255,180,171,0.2)',
+            borderRadius: '0.5rem',
+            color: '#ffb4ab',
+            fontSize: '0.875rem',
+            marginBottom: '1rem',
+          }}
         >
           {error}
         </div>
       )}
 
-      {/* Table */}
-      <div className="card overflow-hidden">
-        {/* Table header */}
-        <div
-          className="flex items-center gap-4 px-4 py-2"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: '#1c2128' }}
-        >
-          <div style={{ width: '16px', flexShrink: 0 }} />
-          <div className="flex-1 section-label">Title</div>
-          <div className="section-label" style={{ minWidth: '100px' }}>Date</div>
-          <div className="section-label" style={{ minWidth: '120px' }}>Participants</div>
-          <div style={{ width: '24px', flexShrink: 0 }} />
+      {/* Loading skeletons */}
+      {loading && (
+        <div className="grid grid-cols-12 gap-6">
+          <div
+            className="col-span-12 lg:col-span-8 animate-pulse"
+            style={{
+              background: '#121212',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '0.75rem',
+              height: '320px',
+            }}
+          />
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="col-span-12 md:col-span-6 lg:col-span-4 animate-pulse"
+              style={{
+                background: '#121212',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '0.75rem',
+                height: '180px',
+              }}
+            />
+          ))}
         </div>
+      )}
 
-        {/* Loading */}
-        {loading && (
-          <>
-            <SkeletonRow />
-            <SkeletonRow />
-            <SkeletonRow />
-          </>
-        )}
-
-        {/* Rows */}
-        {!loading && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <CalendarDays className="w-8 h-8 mb-3" style={{ color: '#484f58' }} />
-            <p className="text-sm" style={{ color: '#7d8590' }}>No meetings found</p>
-            <p className="text-xs mt-1" style={{ color: '#484f58' }}>
-              Create your first meeting to get started
-            </p>
-          </div>
-        )}
-
-        {!loading && filtered.length > 0 && (
-          <motion.div
-            key={`${activeTab}-${search}`}
-            initial="hidden"
-            animate="visible"
-            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.03 } } }}
+      {/* Empty */}
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: '48px', color: '#27272a', marginBottom: '1rem', display: 'block' }}
           >
-            {filtered.map((meeting) => (
-              <MeetingRow key={meeting.id} meeting={meeting} />
-            ))}
-          </motion.div>
-        )}
-      </div>
+            event_note
+          </span>
+          <p style={{ color: '#52525b', fontSize: '0.9375rem' }}>No meetings found</p>
+          <p style={{ color: '#3f3f46', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+            {search ? 'Try a different search term' : 'Create your first meeting to get started'}
+          </p>
+        </div>
+      )}
 
+      {/* Meeting grid — asymmetric Stitch layout */}
       {!loading && filtered.length > 0 && (
-        <p className="text-xs mt-3" style={{ color: '#484f58' }}>
-          {filtered.length} meeting{filtered.length !== 1 ? 's' : ''}
-        </p>
+        <div className="grid grid-cols-12 gap-6">
+          {/* Featured card (first meeting) */}
+          {featured && (
+            <div className="col-span-12 lg:col-span-8">
+              <FeaturedMeetingCard meeting={featured} />
+            </div>
+          )}
+
+          {/* Side cards */}
+          {rest.slice(0, 4).map((meeting) => (
+            <div key={meeting.id} className="col-span-12 md:col-span-6 lg:col-span-4">
+              <MeetingCard meeting={meeting} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination footer */}
+      {!loading && filtered.length > 0 && (
+        <div
+          style={{
+            marginTop: '4rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+            paddingTop: '2rem',
+          }}
+        >
+          <p style={{ color: '#71717a', fontSize: '0.75rem' }}>
+            Showing{' '}
+            <span style={{ color: '#ffffff' }}>
+              {Math.min(filtered.length, 5)}
+            </span>{' '}
+            of <span style={{ color: '#ffffff' }}>{filtered.length}</span> meetings
+          </p>
+        </div>
       )}
     </div>
   );

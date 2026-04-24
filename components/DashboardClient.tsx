@@ -3,15 +3,7 @@
 import { useTransition } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import {
-  CalendarDays,
-  AlertCircle,
-  ListChecks,
-  Clock,
-  Users,
-  AlertTriangle,
-} from 'lucide-react';
-import StatCard from '@/components/StatCard';
+import Link from 'next/link';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,17 +35,17 @@ interface DashboardClientProps {
 
 // ─── Animation Variants ────────────────────────────────────────────────────────
 
-const fadeIn = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' as const } },
+const fadeUp = {
+  hidden:  { opacity: 0, y: 16 },
+  show:    { opacity: 1, y: 0, transition: { duration: 0.28, ease: 'easeOut' as const } },
 };
 
-const containerVariants = {
+const container = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.03 } },
+  show:   { transition: { staggerChildren: 0.06 } },
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatTime(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
@@ -70,13 +62,27 @@ function daysOverdue(dueDateStr: string | null): number {
   return Math.max(0, Math.floor(diff / 86400000));
 }
 
+function hoursOverdue(dueDateStr: string | null): number {
+  if (!dueDateStr) return 0;
+  const diff = Date.now() - new Date(dueDateStr).getTime();
+  return Math.max(0, Math.floor(diff / 3600000));
+}
+
 function isActiveMeeting(dateStr: string | null): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  // consider active if within 60 min window
-  return diff >= 0 && diff < 60 * 60 * 1000;
+  const diff = Date.now() - d.getTime();
+  return diff >= 0 && diff < 90 * 60 * 1000;
+}
+
+function overdueLabel(item: ActionItem): string {
+  const days = daysOverdue(item.dueDate);
+  if (days === 0) {
+    const hrs = hoursOverdue(item.dueDate);
+    if (hrs === 0) return 'DUE NOW';
+    return `${hrs} HOUR${hrs !== 1 ? 'S' : ''} OVERDUE`;
+  }
+  return `${days} DAY${days !== 1 ? 'S' : ''} OVERDUE`;
 }
 
 // ─── Mark Done Button ─────────────────────────────────────────────────────────
@@ -104,140 +110,239 @@ function MarkDoneButton({ itemId }: { itemId: string }) {
       onClick={handleMarkDone}
       disabled={isPending}
       title="Mark as done"
-      className="transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+      className="material-symbols-outlined transition-colors disabled:opacity-40"
       style={{
-        width: '24px',
-        height: '24px',
-        borderRadius: '50%',
-        border: '1px solid rgba(255,255,255,0.15)',
-        background: 'transparent',
+        fontSize: '20px',
+        color: isPending ? '#52525b' : '#3f3f46',
+        background: 'none',
+        border: 'none',
         cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        padding: '2px',
         flexShrink: 0,
       }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#a1a1aa'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = isPending ? '#52525b' : '#3f3f46'; }}
     >
-      {isPending ? (
-        <span style={{ fontSize: '8px', color: '#7d8590' }}>…</span>
-      ) : (
-        <span style={{ fontSize: '8px', color: '#3fb950' }}>✓</span>
-      )}
+      {isPending ? 'hourglass_empty' : 'check_circle'}
     </button>
+  );
+}
+
+// ─── Stat Card (Metric) ───────────────────────────────────────────────────────
+
+function MetricCard({
+  label,
+  value,
+  valueColor,
+  sub,
+}: {
+  label: string;
+  value: string | number;
+  valueColor?: string;
+  sub?: string;
+}) {
+  return (
+    <div className="metric-card">
+      <p className="text-label-caps" style={{ color: '#71717a', marginBottom: '0.5rem' }}>
+        {label}
+      </p>
+      <div className="flex items-end justify-between">
+        <span className="text-h2" style={{ color: valueColor ?? '#ffffff' }}>
+          {value}
+        </span>
+        {sub && (
+          <span
+            className="text-xs font-medium"
+            style={{ color: sub.includes('%') ? '#60a5fa' : '#71717a' }}
+          >
+            {sub}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
 // ─── Today's Meeting Card ─────────────────────────────────────────────────────
 
-function MeetingCard({ meeting, index }: { meeting: Meeting; index: number }) {
-  const participantStr = meeting.participants?.slice(0, 3).join(', ') ?? '';
+function TodayMeetingRow({ meeting, index }: { meeting: Meeting; index: number }) {
   const time = formatTime(meeting.meetingDate);
   const active = isActiveMeeting(meeting.meetingDate);
+  const participants = meeting.participants?.slice(0, 3).join(', ') ?? '';
 
   return (
-    <motion.div
-      variants={fadeIn}
-      className="card flex gap-4 items-start"
-      style={{
-        padding: '14px 16px',
-        background: active ? '#1c2128' : '#161b22',
-        borderLeft: active ? '3px solid #2563eb' : '3px solid rgba(255,255,255,0.06)',
-      }}
+    <div
+      className="relative"
+      style={{ paddingLeft: '3rem', position: 'relative' }}
     >
       {/* Timeline dot */}
-      <div className="flex flex-col items-center pt-1" style={{ gap: '4px' }}>
-        <div
-          style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background: active ? '#3b82f6' : '#484f58',
-            flexShrink: 0,
-          }}
-        />
-        {index === 0 && (
-          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.06)' }} />
+      <div
+        style={{
+          position: 'absolute',
+          left: '0.75rem',
+          top: '1.5rem',
+        }}
+      >
+        {active ? (
+          <div className="dot-active" />
+        ) : (
+          <div className="dot-inactive" />
         )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span style={{ fontSize: '0.75rem', color: '#7d8590' }}>{time}</span>
-          {active && (
-            <span className="badge badge-green">ACTIVE</span>
+      <div
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all"
+        style={{
+          padding: '1rem',
+          borderRadius: '0.5rem',
+          background: active ? 'rgba(255,255,255,0.05)' : 'transparent',
+          border: active ? '1px solid rgba(255,255,255,0.07)' : '1px solid transparent',
+        }}
+        onMouseEnter={(e) => {
+          if (!active) {
+            (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.03)';
+            (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.05)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!active) {
+            (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+            (e.currentTarget as HTMLDivElement).style.borderColor = 'transparent';
+          }
+        }}
+      >
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className="text-mono-data"
+              style={{
+                fontSize: '0.75rem',
+                color: active ? '#60a5fa' : '#71717a',
+              }}
+            >
+              {time}
+            </span>
+            {active && (
+              <span className="badge badge-active" style={{ fontSize: '9px' }}>
+                Active
+              </span>
+            )}
+          </div>
+          <h4
+            className="font-semibold"
+            style={{ color: '#ffffff', fontSize: '0.9375rem' }}
+          >
+            {meeting.title}
+          </h4>
+          {participants && (
+            <p
+              className="text-sm mt-1"
+              style={{ color: active ? '#a1a1aa' : '#52525b' }}
+            >
+              {participants}
+              {(meeting.participants?.length ?? 0) > 3
+                ? ` +${(meeting.participants?.length ?? 0) - 3} others`
+                : ''}
+            </p>
           )}
         </div>
-        <p className="text-sm font-semibold truncate" style={{ color: '#e6edf3' }}>
-          {meeting.title}
-        </p>
-        {participantStr && (
-          <p className="text-xs mt-1 truncate" style={{ color: '#7d8590' }}>
-            <Users className="w-3 h-3 inline-block mr-1 opacity-60" />
-            {participantStr}
-          </p>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {active ? (
+            <Link href={`/meetings/${meeting.id}`}>
+              <button
+                className="btn-primary"
+                style={{ fontSize: '0.75rem', padding: '0.375rem 1rem' }}
+              >
+                Join Now
+              </button>
+            </Link>
+          ) : (
+            <Link href={`/meetings/${meeting.id}`}>
+              <button className="btn-ghost">
+                Review Brief
+              </button>
+            </Link>
+          )}
+        </div>
       </div>
-
-      {/* Action button */}
-      <div className="shrink-0 pt-0.5">
-        {active ? (
-          <button
-            className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: '#2563eb', color: '#ffffff' }}
-          >
-            Join Now
-          </button>
-        ) : (
-          <button
-            className="text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              color: '#7d8590',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
-            Review Brief
-          </button>
-        )}
-      </div>
-    </motion.div>
+    </div>
   );
 }
 
-// ─── Overdue Item Row ─────────────────────────────────────────────────────────
+// ─── Overdue Action Row ───────────────────────────────────────────────────────
 
-function OverdueItemRow({ item }: { item: ActionItem }) {
-  const days = daysOverdue(item.dueDate);
-  const overdueColor = days > 7 ? '#f85149' : '#d29922';
+function OverdueActionCard({ item }: { item: ActionItem }) {
+  const label = overdueLabel(item);
+  const isUrgent = daysOverdue(item.dueDate) > 0;
 
   return (
-    <motion.div
-      variants={fadeIn}
-      className="card flex items-center gap-3"
-      style={{ padding: '12px 14px' }}
+    <div
+      className="transition-all cursor-pointer"
+      style={{
+        padding: '1rem',
+        background: 'rgba(9,9,11,0.6)',
+        border: '1px solid rgba(255,255,255,0.05)',
+        borderRadius: '0.5rem',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = isUrgent
+          ? 'rgba(255,180,171,0.3)'
+          : 'rgba(59,130,246,0.3)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.05)';
+      }}
     >
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate" style={{ color: '#e6edf3' }}>
-          {item.title}
-        </p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <span className="text-[0.65rem] font-semibold uppercase tracking-wider" style={{ color: overdueColor }}>
-            {days} {days === 1 ? 'day' : 'days'} overdue
-          </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-label-caps"
+            style={{
+              color: isUrgent ? '#ffb4ab' : '#60a5fa',
+              marginBottom: '0.25rem',
+              fontSize: '0.65rem',
+            }}
+          >
+            {label}
+          </p>
+          <h4
+            className="text-sm font-medium"
+            style={{ color: '#e4e4e7' }}
+          >
+            {item.title}
+          </h4>
           {item.assignee && (
-            <span className="text-xs" style={{ color: '#484f58' }}>
-              · {item.assignee}
-            </span>
+            <div className="flex items-center gap-2 mt-2">
+              <div
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '50%',
+                  background: '#27272a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '7px',
+                  fontWeight: 700,
+                  color: '#a1a1aa',
+                  flexShrink: 0,
+                }}
+              >
+                {item.assignee.slice(0, 2).toUpperCase()}
+              </div>
+              <span style={{ fontSize: '11px', color: '#71717a' }}>
+                {item.assignee}
+              </span>
+            </div>
           )}
         </div>
+        <MarkDoneButton itemId={item.id} />
       </div>
-      <MarkDoneButton itemId={item.id} />
-    </motion.div>
+    </div>
   );
 }
 
-// ─── Main Client Component ────────────────────────────────────────────────────
+// ─── Main Dashboard Client ────────────────────────────────────────────────────
 
 export default function DashboardClient({
   greeting,
@@ -253,23 +358,21 @@ export default function DashboardClient({
     day: 'numeric',
   }).format(new Date());
 
+  const completionRate = overdueCount === 0 ? 100 : Math.max(0, Math.round(100 - (overdueCount / (overdueCount + thisWeekCount + 1)) * 100));
+
   return (
     <motion.div
-      variants={containerVariants}
+      variants={container}
       initial="hidden"
       animate="show"
-      className="min-h-screen"
-      style={{ padding: '32px 36px', maxWidth: '1100px' }}
+      style={{ padding: '2rem 2rem 3rem', maxWidth: '1440px' }}
     >
-      {/* ── Greeting ─────────────────────────────────────────────────────────── */}
-      <motion.div variants={fadeIn} style={{ marginBottom: '28px' }}>
-        <h1
-          className="font-bold"
-          style={{ fontSize: '2rem', color: '#e6edf3', lineHeight: '1.2' }}
-        >
+      {/* ── Hero Header ────────────────────────────────────────────────── */}
+      <motion.section variants={fadeUp} style={{ marginBottom: '2rem' }}>
+        <h1 className="text-h1" style={{ color: '#ffffff', marginBottom: '0.5rem' }}>
           {greeting}, Peter.
         </h1>
-        <p className="mt-1.5 text-sm" style={{ color: '#7d8590' }}>
+        <p style={{ color: '#71717a', fontSize: '0.9375rem' }}>
           {dateLabel} —{' '}
           {todayMeetingsCount > 0
             ? `${todayMeetingsCount} meeting${todayMeetingsCount !== 1 ? 's' : ''} today`
@@ -278,104 +381,186 @@ export default function DashboardClient({
             ? ` and ${overdueCount} overdue action${overdueCount !== 1 ? 's' : ''} requiring your attention.`
             : '.'}
         </p>
-      </motion.div>
+      </motion.section>
 
-      {/* ── Stat Cards ───────────────────────────────────────────────────────── */}
+      {/* ── Metric Cards ───────────────────────────────────────────────── */}
       <motion.div
-        variants={containerVariants}
-        className="grid grid-cols-3 gap-4"
-        style={{ marginBottom: '28px' }}
+        variants={container}
+        className="grid gap-4"
+        style={{
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          marginBottom: '2rem',
+        }}
       >
-        <StatCard
-          title="Today's Meetings"
-          value={todayMeetingsCount}
-          icon={CalendarDays}
-          color="violet"
-          description="Scheduled for today"
-        />
-        <StatCard
-          title="Overdue Items"
-          value={overdueCount}
-          icon={AlertCircle}
-          color="orange"
-          description="Past due date"
-        />
-        <StatCard
-          title="This Week"
-          value={thisWeekCount}
-          icon={ListChecks}
-          color="emerald"
-          description="Open action items"
-        />
+        <motion.div variants={fadeUp}>
+          <MetricCard
+            label="Total Meetings"
+            value={todayMeetingsCount}
+            sub="Today"
+          />
+        </motion.div>
+        <motion.div variants={fadeUp}>
+          <MetricCard
+            label="Pending Actions"
+            value={thisWeekCount}
+            sub="This week"
+          />
+        </motion.div>
+        <motion.div variants={fadeUp}>
+          <MetricCard
+            label="Due Today"
+            value={overdueCount}
+            valueColor={overdueCount > 0 ? '#ffb4ab' : '#34d399'}
+            sub={overdueCount > 0 ? `Overdue: ${overdueCount}` : 'All clear'}
+          />
+        </motion.div>
+        <motion.div variants={fadeUp}>
+          <MetricCard
+            label="Completion Rate"
+            value={`${completionRate}%`}
+            valueColor="#b7c4ff"
+          />
+        </motion.div>
       </motion.div>
 
-      {/* ── Two-column layout ─────────────────────────────────────────────────── */}
+      {/* ── Bento Grid ─────────────────────────────────────────────────── */}
       <div className="grid gap-6" style={{ gridTemplateColumns: '2fr 1fr' }}>
-        {/* LEFT: Today's Meetings */}
-        <motion.section variants={fadeIn}>
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarDays className="w-3.5 h-3.5" style={{ color: '#7d8590' }} />
-            <span className="section-label">Today&apos;s Meetings</span>
-            {todayMeetingsCount > 0 && (
-              <span className="badge badge-gray ml-1">{todayMeetingsCount}</span>
-            )}
+
+        {/* LEFT: Today's Schedule */}
+        <motion.div variants={fadeUp} className="bento-card">
+          <div className="flex items-center justify-between" style={{ marginBottom: '2rem' }}>
+            <div className="flex items-center gap-3">
+              <span
+                className="material-symbols-outlined"
+                style={{ color: '#3b82f6', fontSize: '22px' }}
+              >
+                event
+              </span>
+              <h3 className="text-h3" style={{ color: '#ffffff' }}>
+                Today&apos;s Schedule
+              </h3>
+            </div>
+            <Link href="/meetings">
+              <button
+                className="text-label-caps"
+                style={{
+                  color: '#3b82f6',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.7rem',
+                }}
+              >
+                VIEW ALL
+              </button>
+            </Link>
           </div>
 
-          {todayMeetings.length === 0 ? (
+          {/* Timeline */}
+          <div style={{ position: 'relative' }}>
+            {/* Vertical line */}
             <div
-              className="card flex flex-col items-center justify-center text-center"
-              style={{ padding: '40px 20px' }}
-            >
-              <CalendarDays className="w-8 h-8 mb-2" style={{ color: '#484f58' }} />
-              <p className="text-sm" style={{ color: '#7d8590' }}>
-                No meetings scheduled for today
-              </p>
-            </div>
-          ) : (
-            <motion.div variants={containerVariants} className="space-y-2">
-              {todayMeetings.map((meeting, i) => (
-                <MeetingCard key={meeting.id} meeting={meeting} index={i} />
-              ))}
-            </motion.div>
-          )}
-        </motion.section>
-
-        {/* RIGHT: Overdue Action Items */}
-        <motion.section variants={fadeIn}>
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-3.5 h-3.5" style={{ color: '#f85149' }} />
-            <span className="section-label">Overdue Actions</span>
-            {overdueCount > 0 && (
-              <span className="badge badge-red ml-1">{overdueCount} TOTAL</span>
-            )}
-          </div>
-
-          {overdueItems.length === 0 ? (
-            <div
-              className="card flex flex-col items-center justify-center text-center"
-              style={{ padding: '40px 20px' }}
-            >
-              <Clock className="w-8 h-8 mb-2" style={{ color: '#484f58' }} />
-              <p className="text-sm" style={{ color: '#7d8590' }}>
-                You&apos;re all caught up!
-              </p>
-            </div>
-          ) : (
-            <motion.div variants={containerVariants} className="space-y-2">
-              {overdueItems.slice(0, 7).map((item) => (
-                <OverdueItemRow key={item.id} item={item} />
-              ))}
-              {overdueItems.length > 7 && (
-                <p
-                  className="text-xs text-center pt-1 cursor-pointer hover:underline"
-                  style={{ color: '#3b82f6' }}
+              style={{
+                position: 'absolute',
+                left: '1rem',
+                top: '1rem',
+                bottom: '1rem',
+                width: '1px',
+                background: 'rgba(255,255,255,0.07)',
+              }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {todayMeetings.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: 'center',
+                    padding: '2.5rem 1rem',
+                    color: '#52525b',
+                  }}
                 >
-                  Show All Actions →
-                </p>
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: '36px', marginBottom: '0.75rem', display: 'block' }}
+                  >
+                    event_available
+                  </span>
+                  <p style={{ fontSize: '0.875rem' }}>No meetings scheduled for today</p>
+                </div>
+              ) : (
+                todayMeetings.map((meeting, i) => (
+                  <TodayMeetingRow key={meeting.id} meeting={meeting} index={i} />
+                ))
               )}
-            </motion.div>
-          )}
-        </motion.section>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* RIGHT: Overdue Actions */}
+        <motion.div variants={fadeUp} className="bento-card flex flex-col">
+          <div className="flex items-center justify-between" style={{ marginBottom: '2rem' }}>
+            <div className="flex items-center gap-3">
+              <span
+                className="material-symbols-outlined"
+                style={{ color: '#ffb4ab', fontSize: '22px' }}
+              >
+                assignment_late
+              </span>
+              <h3 className="text-h3" style={{ color: '#ffffff' }}>
+                Overdue Actions
+              </h3>
+            </div>
+            {overdueCount > 0 && (
+              <span className="badge badge-error-container" style={{ fontSize: '9px' }}>
+                {overdueCount} TOTAL
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
+            {overdueItems.length === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: '2.5rem 1rem',
+                  color: '#52525b',
+                }}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: '36px', marginBottom: '0.75rem', display: 'block' }}
+                >
+                  task_alt
+                </span>
+                <p style={{ fontSize: '0.875rem' }}>You&apos;re all caught up!</p>
+              </div>
+            ) : (
+              overdueItems.slice(0, 5).map((item) => (
+                <OverdueActionCard key={item.id} item={item} />
+              ))
+            )}
+          </div>
+
+          <Link href="/action-items" style={{ marginTop: '1.5rem' }}>
+            <button
+              className="w-full"
+              style={{
+                padding: '0.5rem',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: '0.5rem',
+                color: '#a1a1aa',
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                background: 'transparent',
+                cursor: 'pointer',
+                transition: 'background 200ms',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+            >
+              Show All Actions
+            </button>
+          </Link>
+        </motion.div>
       </div>
     </motion.div>
   );
