@@ -4,7 +4,7 @@ interface Meeting {
   id: string;
   title: string;
   meetingDate: string | null;
-  participants: string | null;
+  participants: string[] | string | null;
   aiSummary: string | null;
   companyName?: string | null;
 }
@@ -58,8 +58,9 @@ function formatDate(dateStr: string | null): string {
   }).format(new Date(dateStr));
 }
 
-function parseParticipants(raw: string | null): string[] {
+function parseParticipants(raw: string | string[] | null): string[] {
   if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
   try { return JSON.parse(raw) as string[]; } catch { return []; }
 }
 

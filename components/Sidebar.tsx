@@ -24,8 +24,8 @@ export default function Sidebar() {
       <div className="sidebar-logo">
         <div className="sidebar-logo-icon">
           <span
-            className="material-symbols-outlined"
-            style={{ color: '#000', fontSize: '16px', fontVariationSettings: "'FILL' 1" }}
+            className="material-icons"
+            style={{ color: '#000', fontSize: '16px' }}
           >
             forest
           </span>
@@ -60,7 +60,7 @@ export default function Sidebar() {
             <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
               <div className={`sidebar-nav-item${active ? ' active' : ''}`}>
                 <span
-                  className="material-symbols-outlined"
+                  className="material-icons"
                   style={{ fontSize: '16px' }}
                 >
                   {item.icon}
@@ -77,7 +77,7 @@ export default function Sidebar() {
         {/* New Meeting */}
         <Link href="/import" style={{ textDecoration: 'none' }}>
           <div className="sidebar-btn-new">
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+            <span className="material-icons" style={{ fontSize: '14px' }}>add</span>
             Import Meeting
           </div>
         </Link>
