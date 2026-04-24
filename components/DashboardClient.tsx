@@ -9,11 +9,9 @@ import {
   ListChecks,
   Clock,
   Users,
-  Building2,
-  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import StatCard from '@/components/StatCard';
-import { cn, priorityColors } from '@/lib/utils';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,18 +43,14 @@ interface DashboardClientProps {
 
 // ─── Animation Variants ────────────────────────────────────────────────────────
 
-const containerVariants = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
+const fadeIn = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' as const } },
 };
 
-const fadeUpVariant = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: 'easeOut' as const } },
+const containerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.03 } },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -70,11 +64,19 @@ function formatTime(dateStr: string | null | undefined): string {
   }).format(new Date(dateStr));
 }
 
-type Priority = keyof typeof priorityColors;
+function daysOverdue(dueDateStr: string | null): number {
+  if (!dueDateStr) return 0;
+  const diff = Date.now() - new Date(dueDateStr).getTime();
+  return Math.max(0, Math.floor(diff / 86400000));
+}
 
-function getPriorityColor(priority: string | null): string {
-  if (!priority) return priorityColors.medium;
-  return priorityColors[priority as Priority] ?? priorityColors.medium;
+function isActiveMeeting(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  // consider active if within 60 min window
+  return diff >= 0 && diff < 60 * 60 * 1000;
 }
 
 // ─── Mark Done Button ─────────────────────────────────────────────────────────
@@ -91,11 +93,9 @@ function MarkDoneButton({ itemId }: { itemId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'done' }),
       });
-      startTransition(() => {
-        router.refresh();
-      });
+      startTransition(() => { router.refresh(); });
     } catch {
-      // silently fail — the UI will refresh on next visit
+      // silently fail
     }
   };
 
@@ -103,54 +103,102 @@ function MarkDoneButton({ itemId }: { itemId: string }) {
     <button
       onClick={handleMarkDone}
       disabled={isPending}
-      className={cn(
-        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150',
-        'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
-        'hover:bg-emerald-500/20 hover:border-emerald-400/40',
-        'disabled:opacity-40 disabled:cursor-not-allowed'
-      )}
+      title="Mark as done"
+      className="transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.15)',
+        background: 'transparent',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
     >
-      <CheckCircle2 className="w-3.5 h-3.5" />
-      {isPending ? 'Saving…' : 'Done'}
+      {isPending ? (
+        <span style={{ fontSize: '8px', color: '#7d8590' }}>…</span>
+      ) : (
+        <span style={{ fontSize: '8px', color: '#3fb950' }}>✓</span>
+      )}
     </button>
   );
 }
 
 // ─── Today's Meeting Card ─────────────────────────────────────────────────────
 
-function MeetingCard({ meeting }: { meeting: Meeting }) {
-  const participantStr = meeting.participants?.join(', ') ?? '—';
+function MeetingCard({ meeting, index }: { meeting: Meeting; index: number }) {
+  const participantStr = meeting.participants?.slice(0, 3).join(', ') ?? '';
+  const time = formatTime(meeting.meetingDate);
+  const active = isActiveMeeting(meeting.meetingDate);
 
   return (
     <motion.div
-      variants={fadeUpVariant}
-      className="bg-white/[0.04] border border-white/[0.07] rounded-xl p-4 flex flex-col gap-3"
+      variants={fadeIn}
+      className="card flex gap-4 items-start"
+      style={{
+        padding: '14px 16px',
+        background: active ? '#1c2128' : '#161b22',
+        borderLeft: active ? '3px solid #2563eb' : '3px solid rgba(255,255,255,0.06)',
+      }}
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 p-2 rounded-lg bg-violet-500/10 shrink-0">
-          <CalendarDays className="w-4 h-4 text-violet-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-white/90 truncate">{meeting.title}</h3>
-          <div className="flex items-center gap-1.5 mt-1">
-            <Clock className="w-3 h-3 text-white/30 shrink-0" />
-            <span className="text-xs text-white/40">{formatTime(meeting.meetingDate)}</span>
-          </div>
-        </div>
+      {/* Timeline dot */}
+      <div className="flex flex-col items-center pt-1" style={{ gap: '4px' }}>
+        <div
+          style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: active ? '#3b82f6' : '#484f58',
+            flexShrink: 0,
+          }}
+        />
+        {index === 0 && (
+          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.06)' }} />
+        )}
       </div>
 
-      <div className="flex flex-col gap-1.5 pl-10">
-        {participantStr !== '—' && (
-          <div className="flex items-center gap-1.5">
-            <Users className="w-3 h-3 text-white/25 shrink-0" />
-            <p className="text-xs text-white/40 truncate">{participantStr}</p>
-          </div>
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span style={{ fontSize: '0.75rem', color: '#7d8590' }}>{time}</span>
+          {active && (
+            <span className="badge badge-green">ACTIVE</span>
+          )}
+        </div>
+        <p className="text-sm font-semibold truncate" style={{ color: '#e6edf3' }}>
+          {meeting.title}
+        </p>
+        {participantStr && (
+          <p className="text-xs mt-1 truncate" style={{ color: '#7d8590' }}>
+            <Users className="w-3 h-3 inline-block mr-1 opacity-60" />
+            {participantStr}
+          </p>
         )}
-        {meeting.company && (
-          <div className="flex items-center gap-1.5">
-            <Building2 className="w-3 h-3 text-white/25 shrink-0" />
-            <p className="text-xs text-white/40 truncate">{meeting.company}</p>
-          </div>
+      </div>
+
+      {/* Action button */}
+      <div className="shrink-0 pt-0.5">
+        {active ? (
+          <button
+            className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
+            style={{ background: '#2563eb', color: '#ffffff' }}
+          >
+            Join Now
+          </button>
+        ) : (
+          <button
+            className="text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              color: '#7d8590',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            Review Brief
+          </button>
         )}
       </div>
     </motion.div>
@@ -160,32 +208,31 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
 // ─── Overdue Item Row ─────────────────────────────────────────────────────────
 
 function OverdueItemRow({ item }: { item: ActionItem }) {
-  const priorityLabel = item.priority ?? 'medium';
-  const colorClass = getPriorityColor(item.priority);
+  const days = daysOverdue(item.dueDate);
+  const overdueColor = days > 7 ? '#f85149' : '#d29922';
 
   return (
     <motion.div
-      variants={fadeUpVariant}
-      className="bg-white/[0.04] border border-white/[0.07] rounded-xl p-4 flex items-center gap-4"
+      variants={fadeIn}
+      className="card flex items-center gap-3"
+      style={{ padding: '12px 14px' }}
     >
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white/85 truncate">{item.title}</p>
-        {item.assignee && (
-          <p className="text-xs text-white/35 mt-0.5 truncate">Assignee: {item.assignee}</p>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 shrink-0">
-        <span
-          className={cn(
-            'text-xs font-medium px-2 py-0.5 rounded-full border capitalize',
-            colorClass
+        <p className="text-sm font-medium truncate" style={{ color: '#e6edf3' }}>
+          {item.title}
+        </p>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <span className="text-[0.65rem] font-semibold uppercase tracking-wider" style={{ color: overdueColor }}>
+            {days} {days === 1 ? 'day' : 'days'} overdue
+          </span>
+          {item.assignee && (
+            <span className="text-xs" style={{ color: '#484f58' }}>
+              · {item.assignee}
+            </span>
           )}
-        >
-          {priorityLabel}
-        </span>
-        <MarkDoneButton itemId={item.id} />
+        </div>
       </div>
+      <MarkDoneButton itemId={item.id} />
     </motion.div>
   );
 }
@@ -200,114 +247,136 @@ export default function DashboardClient({
   overdueCount,
   thisWeekCount,
 }: DashboardClientProps) {
-  return (
-    <div className="relative min-h-screen">
-      {/* Animated gradient background */}
-      <div className="animated-gradient pointer-events-none absolute inset-0 opacity-40" />
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date());
 
+  return (
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="min-h-screen"
+      style={{ padding: '32px 36px', maxWidth: '1100px' }}
+    >
+      {/* ── Greeting ─────────────────────────────────────────────────────────── */}
+      <motion.div variants={fadeIn} style={{ marginBottom: '28px' }}>
+        <h1
+          className="font-bold"
+          style={{ fontSize: '2rem', color: '#e6edf3', lineHeight: '1.2' }}
+        >
+          {greeting}, Peter.
+        </h1>
+        <p className="mt-1.5 text-sm" style={{ color: '#7d8590' }}>
+          {dateLabel} —{' '}
+          {todayMeetingsCount > 0
+            ? `${todayMeetingsCount} meeting${todayMeetingsCount !== 1 ? 's' : ''} today`
+            : 'No meetings today'}
+          {overdueCount > 0
+            ? ` and ${overdueCount} overdue action${overdueCount !== 1 ? 's' : ''} requiring your attention.`
+            : '.'}
+        </p>
+      </motion.div>
+
+      {/* ── Stat Cards ───────────────────────────────────────────────────────── */}
       <motion.div
         variants={containerVariants}
-        initial="hidden"
-        animate="show"
-        className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-10"
+        className="grid grid-cols-3 gap-4"
+        style={{ marginBottom: '28px' }}
       >
-        {/* ── Greeting ─────────────────────────────────────────────────────── */}
-        <motion.div variants={fadeUpVariant}>
-          <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-            {greeting}, Peter
-          </h1>
-          <p className="mt-1 text-sm text-white/35">
-            {new Intl.DateTimeFormat('en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            }).format(new Date())}
-          </p>
-        </motion.div>
-
-        {/* ── Stat Cards ───────────────────────────────────────────────────── */}
-        <motion.div
-          variants={containerVariants}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4"
-        >
-          <StatCard
-            title="Today's Meetings"
-            value={todayMeetingsCount}
-            icon={CalendarDays}
-            color="violet"
-            description="Scheduled for today"
-          />
-          <StatCard
-            title="Overdue Items"
-            value={overdueCount}
-            icon={AlertCircle}
-            color="orange"
-            description="Past due date"
-          />
-          <StatCard
-            title="This Week's Items"
-            value={thisWeekCount}
-            icon={ListChecks}
-            color="emerald"
-            description="Open action items"
-          />
-        </motion.div>
-
-        {/* ── Bottom Grid ──────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Today's Meetings list */}
-          <motion.section variants={fadeUpVariant}>
-            <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <CalendarDays className="w-4 h-4" />
-              Today&apos;s Meetings
-            </h2>
-
-            {todayMeetings.length === 0 ? (
-              <div className="bg-white/[0.04] border border-white/[0.07] rounded-xl p-8 text-center">
-                <CalendarDays className="w-8 h-8 text-white/15 mx-auto mb-2" />
-                <p className="text-sm text-white/30">No meetings scheduled for today</p>
-              </div>
-            ) : (
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="show"
-                className="space-y-3"
-              >
-                {todayMeetings.map((meeting) => (
-                  <MeetingCard key={meeting.id} meeting={meeting} />
-                ))}
-              </motion.div>
-            )}
-          </motion.section>
-
-          {/* Overdue Action Items */}
-          <motion.section variants={fadeUpVariant}>
-            <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-orange-400" />
-              Overdue Action Items
-            </h2>
-
-            {overdueItems.length === 0 ? (
-              <div className="bg-white/[0.04] border border-white/[0.07] rounded-xl p-8 text-center">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400/40 mx-auto mb-2" />
-                <p className="text-sm text-white/30">You&apos;re all caught up!</p>
-              </div>
-            ) : (
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="show"
-                className="space-y-3"
-              >
-                {overdueItems.map((item) => (
-                  <OverdueItemRow key={item.id} item={item} />
-                ))}
-              </motion.div>
-            )}
-          </motion.section>
-        </div>
+        <StatCard
+          title="Today's Meetings"
+          value={todayMeetingsCount}
+          icon={CalendarDays}
+          color="violet"
+          description="Scheduled for today"
+        />
+        <StatCard
+          title="Overdue Items"
+          value={overdueCount}
+          icon={AlertCircle}
+          color="orange"
+          description="Past due date"
+        />
+        <StatCard
+          title="This Week"
+          value={thisWeekCount}
+          icon={ListChecks}
+          color="emerald"
+          description="Open action items"
+        />
       </motion.div>
-    </div>
+
+      {/* ── Two-column layout ─────────────────────────────────────────────────── */}
+      <div className="grid gap-6" style={{ gridTemplateColumns: '2fr 1fr' }}>
+        {/* LEFT: Today's Meetings */}
+        <motion.section variants={fadeIn}>
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays className="w-3.5 h-3.5" style={{ color: '#7d8590' }} />
+            <span className="section-label">Today&apos;s Meetings</span>
+            {todayMeetingsCount > 0 && (
+              <span className="badge badge-gray ml-1">{todayMeetingsCount}</span>
+            )}
+          </div>
+
+          {todayMeetings.length === 0 ? (
+            <div
+              className="card flex flex-col items-center justify-center text-center"
+              style={{ padding: '40px 20px' }}
+            >
+              <CalendarDays className="w-8 h-8 mb-2" style={{ color: '#484f58' }} />
+              <p className="text-sm" style={{ color: '#7d8590' }}>
+                No meetings scheduled for today
+              </p>
+            </div>
+          ) : (
+            <motion.div variants={containerVariants} className="space-y-2">
+              {todayMeetings.map((meeting, i) => (
+                <MeetingCard key={meeting.id} meeting={meeting} index={i} />
+              ))}
+            </motion.div>
+          )}
+        </motion.section>
+
+        {/* RIGHT: Overdue Action Items */}
+        <motion.section variants={fadeIn}>
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-3.5 h-3.5" style={{ color: '#f85149' }} />
+            <span className="section-label">Overdue Actions</span>
+            {overdueCount > 0 && (
+              <span className="badge badge-red ml-1">{overdueCount} TOTAL</span>
+            )}
+          </div>
+
+          {overdueItems.length === 0 ? (
+            <div
+              className="card flex flex-col items-center justify-center text-center"
+              style={{ padding: '40px 20px' }}
+            >
+              <Clock className="w-8 h-8 mb-2" style={{ color: '#484f58' }} />
+              <p className="text-sm" style={{ color: '#7d8590' }}>
+                You&apos;re all caught up!
+              </p>
+            </div>
+          ) : (
+            <motion.div variants={containerVariants} className="space-y-2">
+              {overdueItems.slice(0, 7).map((item) => (
+                <OverdueItemRow key={item.id} item={item} />
+              ))}
+              {overdueItems.length > 7 && (
+                <p
+                  className="text-xs text-center pt-1 cursor-pointer hover:underline"
+                  style={{ color: '#3b82f6' }}
+                >
+                  Show All Actions →
+                </p>
+              )}
+            </motion.div>
+          )}
+        </motion.section>
+      </div>
+    </motion.div>
   );
 }

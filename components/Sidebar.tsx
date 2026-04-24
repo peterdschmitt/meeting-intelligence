@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -11,6 +10,9 @@ import {
   Upload,
   Building2,
   Zap,
+  Plus,
+  Settings,
+  LifeBuoy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,58 +29,164 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-16 md:w-56 h-screen sticky top-0 flex flex-col bg-navy-800/80 border-r border-white/[0.06] backdrop-blur-xl z-40 shrink-0">
-      {/* Logo */}
-      <div className="h-16 flex items-center px-4 border-b border-white/[0.06]">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center shrink-0">
+    <aside
+      style={{
+        width: '220px',
+        minWidth: '220px',
+        background: '#0d1117',
+        borderRight: '1px solid rgba(255,255,255,0.08)',
+      }}
+      className="h-screen sticky top-0 flex flex-col z-40 shrink-0"
+    >
+      {/* Logo + wordmark */}
+      <div
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        className="h-14 flex items-center px-4"
+      >
+        <div className="flex items-center gap-2.5">
+          <div
+            style={{ background: '#2563eb', borderRadius: '7px' }}
+            className="w-7 h-7 flex items-center justify-center shrink-0"
+          >
             <Zap className="w-4 h-4 text-white" />
           </div>
-          <span className="hidden md:block font-semibold text-sm text-white/90 tracking-wide">
-            Meeting Intel
-          </span>
+          <div>
+            <p className="text-sm font-semibold leading-tight" style={{ color: '#e6edf3' }}>
+              Meeting Intel
+            </p>
+            <p
+              className="text-[9px] font-semibold uppercase tracking-widest leading-tight mt-0.5"
+              style={{ color: '#484f58' }}
+            >
+              Private Equity Ops
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      {/* Nav items */}
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
-          const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+          const active =
+            pathname === item.href ||
+            (item.href !== '/' && pathname.startsWith(item.href));
           return (
             <Link key={item.href} href={item.href}>
-              <motion.div
-                whileHover={{ x: 2 }}
-                whileTap={{ scale: 0.97 }}
+              <div
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+                  'flex items-center gap-2.5 px-3 py-2 text-sm font-medium transition-colors duration-100 cursor-pointer',
                   active
-                    ? 'bg-violet-600/20 text-violet-300 border border-violet-500/20'
-                    : 'text-white/50 hover:text-white/80 hover:bg-white/[0.05]'
+                    ? 'rounded-r-md'
+                    : 'rounded-md hover:bg-white/[0.04]'
                 )}
+                style={
+                  active
+                    ? {
+                        background: '#1c2128',
+                        color: '#3b82f6',
+                        borderLeft: '2px solid #2563eb',
+                        paddingLeft: '10px',
+                        borderRadius: '0 6px 6px 0',
+                        marginLeft: '-8px',
+                        paddingRight: '12px',
+                      }
+                    : { color: '#7d8590' }
+                }
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLDivElement).style.color = '#e6edf3';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLDivElement).style.color = '#7d8590';
+                  }
+                }}
               >
                 <item.icon className="w-4 h-4 shrink-0" />
-                <span className="hidden md:block">{item.label}</span>
-                {active && (
-                  <motion.div
-                    layoutId="activeIndicator"
-                    className="hidden md:block ml-auto w-1.5 h-1.5 rounded-full bg-violet-400"
-                  />
-                )}
-              </motion.div>
+                <span>{item.label}</span>
+              </div>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="px-4 py-4 border-t border-white/[0.06]">
-        <div className="hidden md:flex items-center gap-3">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold">
+      {/* Bottom section */}
+      <div
+        style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
+        className="px-3 py-3 space-y-1"
+      >
+        {/* New Meeting button */}
+        <Link href="/meetings">
+          <div
+            className="flex items-center justify-center gap-2 w-full py-2 rounded-md text-sm font-semibold transition-colors cursor-pointer"
+            style={{ background: '#2563eb', color: '#ffffff' }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = '#3b82f6';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = '#2563eb';
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Meeting
+          </div>
+        </Link>
+
+        {/* Settings + Support */}
+        <Link href="/settings">
+          <div
+            className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer"
+            style={{ color: '#7d8590' }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.color = '#e6edf3';
+              (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.color = '#7d8590';
+              (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+            }}
+          >
+            <Settings className="w-4 h-4 shrink-0" />
+            Settings
+          </div>
+        </Link>
+        <Link href="/support">
+          <div
+            className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer"
+            style={{ color: '#7d8590' }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.color = '#e6edf3';
+              (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.color = '#7d8590';
+              (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+            }}
+          >
+            <LifeBuoy className="w-4 h-4 shrink-0" />
+            Support
+          </div>
+        </Link>
+
+        {/* User avatar */}
+        <div
+          style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
+          className="flex items-center gap-2.5 pt-3 mt-1 px-1"
+        >
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+            style={{ background: '#2563eb', color: '#ffffff' }}
+          >
             P
           </div>
-          <div>
-            <p className="text-xs font-medium text-white/80">Peter</p>
-            <p className="text-xs text-white/30">Pine Lake Capital</p>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold truncate" style={{ color: '#e6edf3' }}>
+              Peter
+            </p>
+            <p className="text-[10px] truncate" style={{ color: '#484f58' }}>
+              Managing Director
+            </p>
           </div>
         </div>
       </div>

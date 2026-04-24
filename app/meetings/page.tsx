@@ -2,11 +2,21 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Loader2, CalendarDays } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import MeetingCard, { type MeetingCardData } from '@/components/MeetingCard';
+import { Plus, Search, Loader2, CalendarDays, Calendar, Users, Building2, FileText, Mic, Cloud } from 'lucide-react';
+import { cn, formatRelativeDate } from '@/lib/utils';
+import Link from 'next/link';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface MeetingCardData {
+  id: string;
+  title: string;
+  meetingDate: string | null;
+  participants: string[] | null;
+  aiSummary: string | null;
+  source: string | null;
+  companyName?: string | null;
+}
 
 interface MeetingListItem extends MeetingCardData {}
 
@@ -16,9 +26,9 @@ interface NewMeetingForm {
   participants: string;
 }
 
-// ─── Filter helpers ───────────────────────────────────────────────────────────
-
 type FilterTab = 'all' | 'week' | 'month';
+
+// ─── Filter helpers ───────────────────────────────────────────────────────────
 
 function isThisWeek(date: string | null): boolean {
   if (!date) return false;
@@ -40,50 +50,126 @@ function isThisMonth(date: string | null): boolean {
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
 
-// ─── Skeleton card ────────────────────────────────────────────────────────────
+// ─── Source badge ──────────────────────────────────────────────────────────────
 
-function SkeletonCard() {
+const sourceConfig: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
+  manual: { label: 'Manual', icon: FileText },
+  gdrive: { label: 'Google Drive', icon: Cloud },
+  voice:  { label: 'Voice', icon: Mic },
+};
+
+function SourceBadge({ source }: { source: string | null }) {
+  const key = (source ?? 'manual') as keyof typeof sourceConfig;
+  const cfg = sourceConfig[key] ?? sourceConfig.manual;
+  const Icon = cfg.icon;
   return (
-    <div className="glass rounded-xl p-5 border border-white/[0.07] animate-pulse">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="h-4 bg-white/10 rounded w-2/3" />
-        <div className="h-5 bg-white/10 rounded-full w-16" />
-      </div>
-      <div className="flex gap-4 mb-3">
-        <div className="h-3 bg-white/10 rounded w-24" />
-        <div className="h-3 bg-white/10 rounded w-28" />
-      </div>
-      <div className="h-3 bg-white/10 rounded w-1/2 mb-3" />
-      <div className="space-y-1.5">
-        <div className="h-3 bg-white/10 rounded w-full" />
-        <div className="h-3 bg-white/10 rounded w-4/5" />
-      </div>
-    </div>
+    <span className="badge badge-gray" style={{ fontSize: '0.6rem' }}>
+      <Icon className="w-2.5 h-2.5" />
+      {cfg.label}
+    </span>
   );
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
+// ─── Row item ─────────────────────────────────────────────────────────────────
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+const rowVariants = {
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' as const } },
+};
+
+function MeetingRow({ meeting }: { meeting: MeetingListItem }) {
+  const initials = (meeting.participants?.[0] ?? 'U')
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="col-span-full flex flex-col items-center justify-center py-24 text-center"
-    >
-      <div className="w-16 h-16 rounded-2xl bg-white/[0.05] border border-white/[0.08] flex items-center justify-center mb-4">
-        <CalendarDays className="w-7 h-7 text-white/20" />
-      </div>
-      <p className="text-white/50 text-sm mb-1">No meetings found</p>
-      <p className="text-white/25 text-xs mb-5">Create your first meeting to get started</p>
-      <button
-        onClick={onNew}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
+    <Link href={`/meetings/${meeting.id}`} className="block">
+      <motion.div
+        variants={rowVariants}
+        className="flex items-center gap-4 px-4 py-3 transition-colors cursor-pointer"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.025)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+        }}
       >
-        <Plus className="w-4 h-4" />
-        New Meeting
-      </button>
-    </motion.div>
+        {/* Checkbox placeholder */}
+        <div
+          style={{
+            width: '16px',
+            height: '16px',
+            borderRadius: '4px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            flexShrink: 0,
+          }}
+        />
+
+        {/* Title + source */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate" style={{ color: '#e6edf3' }}>
+            {meeting.title}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <SourceBadge source={meeting.source} />
+            {meeting.companyName && (
+              <span className="flex items-center gap-1 text-xs" style={{ color: '#7d8590' }}>
+                <Building2 className="w-3 h-3" />
+                {meeting.companyName}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Date */}
+        <div className="shrink-0 flex items-center gap-1.5 text-xs" style={{ color: '#7d8590', minWidth: '100px' }}>
+          <Calendar className="w-3.5 h-3.5" />
+          {meeting.meetingDate ? formatRelativeDate(meeting.meetingDate) : '—'}
+        </div>
+
+        {/* Participants */}
+        <div className="shrink-0 flex items-center gap-1.5 text-xs" style={{ color: '#7d8590', minWidth: '120px' }}>
+          <Users className="w-3.5 h-3.5" />
+          {meeting.participants && meeting.participants.length > 0
+            ? meeting.participants.slice(0, 2).join(', ') +
+              (meeting.participants.length > 2 ? ` +${meeting.participants.length - 2}` : '')
+            : '—'}
+        </div>
+
+        {/* Assignee avatar */}
+        <div
+          className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+          style={{ background: '#2563eb', color: '#ffffff' }}
+          title={meeting.participants?.[0] ?? ''}
+        >
+          {initials}
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+// ─── Skeleton row ─────────────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <div
+      className="flex items-center gap-4 px-4 py-3 animate-pulse"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: 'rgba(255,255,255,0.07)' }} />
+      <div className="flex-1">
+        <div style={{ height: '12px', background: 'rgba(255,255,255,0.07)', borderRadius: '4px', width: '55%' }} />
+        <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', width: '30%', marginTop: '6px' }} />
+      </div>
+      <div style={{ height: '10px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', width: '80px' }} />
+      <div style={{ height: '10px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', width: '100px' }} />
+      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
+    </div>
   );
 }
 
@@ -132,45 +218,60 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.98 }}
-      transition={{ duration: 0.2 }}
-      className="glass rounded-xl p-5 border border-violet-500/30 mb-6"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.18 }}
+      className="card"
+      style={{ padding: '20px', marginBottom: '16px', borderColor: 'rgba(37,99,235,0.3)' }}
     >
-      <h3 className="text-sm font-semibold text-white/80 mb-4">New Meeting</h3>
+      <h3 className="text-sm font-semibold mb-4" style={{ color: '#e6edf3' }}>New Meeting</h3>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <input
-            autoFocus
-            type="text"
-            placeholder="Meeting title *"
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 transition"
-          />
-        </div>
+        <input
+          autoFocus
+          type="text"
+          placeholder="Meeting title *"
+          value={form.title}
+          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          className="w-full rounded-md px-3 py-2 text-sm focus:outline-none transition"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: '#e6edf3',
+          }}
+        />
         <div className="grid grid-cols-2 gap-3">
           <input
             type="datetime-local"
             value={form.meetingDate}
             onChange={(e) => setForm((f) => ({ ...f, meetingDate: e.target.value }))}
-            className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-3 py-2 text-sm text-white/70 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 transition"
+            className="w-full rounded-md px-3 py-2 text-sm focus:outline-none transition"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#7d8590',
+            }}
           />
           <input
             type="text"
             placeholder="Participants (comma-separated)"
             value={form.participants}
             onChange={(e) => setForm((f) => ({ ...f, participants: e.target.value }))}
-            className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 transition"
+            className="w-full rounded-md px-3 py-2 text-sm focus:outline-none transition"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#e6edf3',
+            }}
           />
         </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs" style={{ color: '#f85149' }}>{error}</p>}
         <div className="flex items-center gap-2 pt-1">
           <button
             type="submit"
             disabled={saving || !form.title.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: '#2563eb', color: '#ffffff' }}
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             {saving ? 'Creating…' : 'Create Meeting'}
@@ -178,7 +279,8 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white/70 hover:bg-white/[0.05] transition-colors"
+            className="px-4 py-2 rounded-md text-sm transition-colors"
+            style={{ color: '#7d8590' }}
           >
             Cancel
           </button>
@@ -188,14 +290,7 @@ function NewMeetingInlineForm({ onClose, onCreated }: NewMeetingFormProps) {
   );
 }
 
-// ─── List container animation variants ───────────────────────────────────────
-
-const listVariants = {
-  hidden: {},
-  visible: {
-    transition: { staggerChildren: 0.07, delayChildren: 0.05 },
-  },
-};
+// ─── Tab counts ───────────────────────────────────────────────────────────────
 
 const TABS: { key: FilterTab; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -231,6 +326,12 @@ export default function MeetingsPage() {
     fetchMeetings();
   }, []);
 
+  const counts = useMemo(() => ({
+    all: meetings.length,
+    week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
+    month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
+  }), [meetings]);
+
   const filtered = useMemo(() => {
     let list = meetings;
     if (activeTab === 'week') list = list.filter((m) => isThisWeek(m.meetingDate));
@@ -254,22 +355,25 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-6xl mx-auto">
+    <div style={{ padding: '32px 36px', maxWidth: '1100px' }}>
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Meetings</h1>
-          <p className="text-sm text-white/40 mt-0.5">Track and review your meeting notes</p>
+          <h1 className="font-bold" style={{ fontSize: '1.5rem', color: '#e6edf3' }}>Meetings</h1>
+          <p className="text-sm mt-0.5" style={{ color: '#7d8590' }}>
+            Track and review your meeting notes
+          </p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
+        <button
           onClick={() => setShowNewForm((v) => !v)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors shadow-lg shadow-violet-900/40"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors"
+          style={{ background: '#2563eb', color: '#ffffff' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#3b82f6'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#2563eb'; }}
         >
           <Plus className="w-4 h-4" />
           New Meeting
-        </motion.button>
+        </button>
       </div>
 
       {/* Inline new meeting form */}
@@ -282,77 +386,123 @@ export default function MeetingsPage() {
         )}
       </AnimatePresence>
 
-      {/* Search + filter row */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
+      {/* Filter tabs + search */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        {/* Tabs */}
+        <div
+          className="flex items-center gap-0"
+          style={{
+            background: '#161b22',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '8px',
+            padding: '4px',
+          }}
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              style={{
+                background: activeTab === tab.key ? '#1c2128' : 'transparent',
+                color: activeTab === tab.key ? '#e6edf3' : '#7d8590',
+              }}
+            >
+              {tab.label}
+              <span
+                className="badge"
+                style={
+                  activeTab === tab.key
+                    ? { background: '#2563eb', color: '#ffffff', border: 'none', padding: '1px 6px' }
+                    : { background: 'rgba(255,255,255,0.06)', color: '#7d8590', border: 'none', padding: '1px 6px' }
+                }
+              >
+                {counts[tab.key]}
+              </span>
+            </button>
+          ))}
+        </div>
+
         {/* Search */}
-        <div className="relative flex-1 w-full sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
+        <div className="relative" style={{ width: '260px' }}>
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#484f58' }} />
           <input
             type="text"
             placeholder="Search meetings…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-white/[0.05] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 transition"
+            className="w-full rounded-md pl-9 pr-4 py-2 text-sm focus:outline-none transition"
+            style={{
+              background: '#161b22',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#e6edf3',
+            }}
           />
-        </div>
-
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                'relative px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150',
-                activeTab === tab.key
-                  ? 'text-white'
-                  : 'text-white/40 hover:text-white/60'
-              )}
-            >
-              {activeTab === tab.key && (
-                <motion.div
-                  layoutId="tabIndicator"
-                  className="absolute inset-0 rounded-lg bg-violet-600/80"
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                />
-              )}
-              <span className="relative z-10">{tab.label}</span>
-            </button>
-          ))}
         </div>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="glass rounded-xl p-4 border border-red-500/20 text-red-400 text-sm mb-6">
+        <div
+          className="card mb-4 text-sm"
+          style={{ padding: '12px 16px', color: '#f85149', borderColor: 'rgba(248,81,73,0.2)' }}
+        >
           {error}
         </div>
       )}
 
-      {/* Loading skeletons */}
-      {loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[0, 1, 2].map((i) => <SkeletonCard key={i} />)}
-        </div>
-      )}
-
-      {/* Meetings grid */}
-      {!loading && (
-        <motion.div
-          key={`${activeTab}-${search}`}
-          variants={listVariants}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+      {/* Table */}
+      <div className="card overflow-hidden">
+        {/* Table header */}
+        <div
+          className="flex items-center gap-4 px-4 py-2"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: '#1c2128' }}
         >
-          {filtered.length === 0 ? (
-            <EmptyState onNew={() => setShowNewForm(true)} />
-          ) : (
-            filtered.map((meeting) => (
-              <MeetingCard key={meeting.id} meeting={meeting} />
-            ))
-          )}
-        </motion.div>
+          <div style={{ width: '16px', flexShrink: 0 }} />
+          <div className="flex-1 section-label">Title</div>
+          <div className="section-label" style={{ minWidth: '100px' }}>Date</div>
+          <div className="section-label" style={{ minWidth: '120px' }}>Participants</div>
+          <div style={{ width: '24px', flexShrink: 0 }} />
+        </div>
+
+        {/* Loading */}
+        {loading && (
+          <>
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+          </>
+        )}
+
+        {/* Rows */}
+        {!loading && filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <CalendarDays className="w-8 h-8 mb-3" style={{ color: '#484f58' }} />
+            <p className="text-sm" style={{ color: '#7d8590' }}>No meetings found</p>
+            <p className="text-xs mt-1" style={{ color: '#484f58' }}>
+              Create your first meeting to get started
+            </p>
+          </div>
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <motion.div
+            key={`${activeTab}-${search}`}
+            initial="hidden"
+            animate="visible"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.03 } } }}
+          >
+            {filtered.map((meeting) => (
+              <MeetingRow key={meeting.id} meeting={meeting} />
+            ))}
+          </motion.div>
+        )}
+      </div>
+
+      {!loading && filtered.length > 0 && (
+        <p className="text-xs mt-3" style={{ color: '#484f58' }}>
+          {filtered.length} meeting{filtered.length !== 1 ? 's' : ''}
+        </p>
       )}
     </div>
   );
