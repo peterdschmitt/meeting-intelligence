@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
     const [meeting] = await db
       .insert(meetings)
       .values({
+        id: crypto.randomUUID(),
         title,
         rawNotes,
         source: 'gdrive',

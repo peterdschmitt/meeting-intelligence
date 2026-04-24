@@ -47,7 +47,7 @@ export async function GET(
     // Mark as done
     await db
       .update(actionItems)
-      .set({ status: 'done', completedAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'done', completedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
       .where(eq(actionItems.doneToken, token));
 
     const html = `<!DOCTYPE html>

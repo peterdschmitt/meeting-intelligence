@@ -24,10 +24,11 @@ export async function POST(request: NextRequest) {
     const [meeting] = await db
       .insert(meetings)
       .values({
+        id: crypto.randomUUID(),
         title,
         rawNotes,
-        meetingDate: meetingDate ? new Date(meetingDate) : undefined,
-        participants: participants ?? [],
+        meetingDate: meetingDate ?? null,
+        participants: JSON.stringify(participants ?? []),
         source: 'manual',
       })
       .returning();

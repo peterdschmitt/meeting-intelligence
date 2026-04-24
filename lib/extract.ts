@@ -57,6 +57,7 @@ Example response:
   let insertedItems: typeof actionItems.$inferSelect[] = [];
   if (extractedItems.length > 0) {
     const rows: NewActionItem[] = extractedItems.map((item) => ({
+      id: crypto.randomUUID(),
       title: item.title,
       assignee: item.assignee ?? null,
       dueDate: item.due_date ?? null,
@@ -69,7 +70,7 @@ Example response:
 
   await db
     .update(meetings)
-    .set({ aiSummary: summary, updatedAt: new Date() })
+    .set({ aiSummary: summary, updatedAt: new Date().toISOString() })
     .where(eq(meetings.id, meetingId));
 
   return { actionItems: insertedItems, summary };

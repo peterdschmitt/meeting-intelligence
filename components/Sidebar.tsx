@@ -7,14 +7,9 @@ const navItems = [
   { href: '/',             icon: 'dashboard',  label: 'Dashboard' },
   { href: '/meetings',     icon: 'event_note', label: 'Meetings' },
   { href: '/action-items', icon: 'checklist',  label: 'Action Items' },
-  { href: '/contacts',     icon: 'group',      label: 'Contacts' },
+  { href: '/contacts',     icon: 'group',      label: 'People' },
   { href: '/companies',    icon: 'business',   label: 'Companies' },
   { href: '/import',       icon: 'upload',     label: 'Import' },
-];
-
-const bottomItems = [
-  { href: '/settings', icon: 'settings_suggest', label: 'Settings' },
-  { href: '/support',  icon: 'help_outline',     label: 'Support' },
 ];
 
 export default function Sidebar() {
@@ -24,38 +19,37 @@ export default function Sidebar() {
     href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
-    <aside
-      className="sidebar custom-scrollbar"
-      style={{ overflowY: 'auto' }}
-    >
-      {/* Logo */}
+    <aside className="sidebar custom-scrollbar" style={{ overflowY: 'auto' }}>
+      {/* Brand */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-icon">
           <span
             className="material-symbols-outlined"
-            style={{
-              color: '#ffffff',
-              fontSize: '18px',
-              fontVariationSettings: "'FILL' 1",
-            }}
+            style={{ color: '#000', fontSize: '16px', fontVariationSettings: "'FILL' 1" }}
           >
-            deployed_code
+            forest
           </span>
         </div>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <h2
-            className="text-lg font-bold tracking-tighter"
-            style={{ color: '#f4f4f5', lineHeight: '1.2' }}
+            style={{
+              fontFamily: '"Playfair Display", serif',
+              fontStyle: 'italic',
+              fontSize: '18px',
+              color: '#ffffff',
+              lineHeight: '1',
+              margin: 0,
+            }}
           >
-            Equinox PE
+            Pine Lake.
           </h2>
-          <p
-            className="text-[10px] font-bold uppercase tracking-widest"
-            style={{ color: '#52525b' }}
-          >
-            Command Center
-          </p>
+          <span style={{ color: '#d97706', fontSize: '18px', lineHeight: 1 }}>●</span>
         </div>
+      </div>
+
+      {/* Micro label */}
+      <div style={{ padding: '0 24px 24px' }}>
+        <span className="micro-label">Meeting Intelligence</span>
       </div>
 
       {/* Nav */}
@@ -67,7 +61,7 @@ export default function Sidebar() {
               <div className={`sidebar-nav-item${active ? ' active' : ''}`}>
                 <span
                   className="material-symbols-outlined"
-                  style={{ fontSize: '20px' }}
+                  style={{ fontSize: '16px' }}
                 >
                   {item.icon}
                 </span>
@@ -80,64 +74,37 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="sidebar-footer">
-        {/* New Meeting button */}
-        <Link href="/meetings" style={{ textDecoration: 'none' }}>
+        {/* New Meeting */}
+        <Link href="/import" style={{ textDecoration: 'none' }}>
           <div className="sidebar-btn-new">
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-              add
-            </span>
-            <span>+ New Meeting</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+            Import Meeting
           </div>
         </Link>
 
-        {/* Settings / Support */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          {bottomItems.map((item) => (
-            <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
-              <div className="sidebar-nav-item">
-                <span
-                  className="material-symbols-outlined"
-                  style={{ fontSize: '20px' }}
-                >
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        {/* User avatar footer */}
+        {/* User */}
         <div className="sidebar-user">
           <div
             style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: '#2e62ff',
+              width: '28px',
+              height: '28px',
+              background: '#d97706',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '12px',
+              fontSize: '11px',
               fontWeight: 700,
-              color: '#ffffff',
+              color: '#000',
               flexShrink: 0,
-              border: '1px solid rgba(255,255,255,0.1)',
             }}
           >
             P
           </div>
           <div style={{ minWidth: 0 }}>
-            <p
-              className="text-xs font-semibold truncate"
-              style={{ color: '#f4f4f5', marginBottom: '1px' }}
-            >
+            <p style={{ color: '#e5e5e7', fontSize: '12px', fontWeight: 500, margin: 0 }}>
               Peter
             </p>
-            <p
-              className="truncate"
-              style={{ color: '#52525b', fontSize: '10px' }}
-            >
+            <p className="micro-label" style={{ marginTop: '2px' }}>
               Managing Director
             </p>
           </div>
