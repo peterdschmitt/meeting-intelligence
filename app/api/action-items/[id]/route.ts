@@ -12,9 +12,10 @@ export async function PATCH(
     const body = (await request.json()) as {
       status?: string;
       title?: string;
-      assignee?: string;
-      dueDate?: string;
+      assignee?: string | null;
+      dueDate?: string | null;
       priority?: string;
+      description?: string | null;
     };
 
     const updates: Record<string, unknown> = {};
@@ -22,6 +23,7 @@ export async function PATCH(
     if (body.assignee !== undefined) updates.assignee = body.assignee;
     if (body.dueDate !== undefined) updates.dueDate = body.dueDate;
     if (body.priority !== undefined) updates.priority = body.priority;
+    if (body.description !== undefined) updates.description = body.description;
     if (body.status !== undefined) {
       updates.status = body.status;
       if (body.status === 'done') {

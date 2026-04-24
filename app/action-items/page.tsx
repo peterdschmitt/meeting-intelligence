@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import DetailPanel from '@/components/DetailPanel';
 
 interface ActionItem {
   id: string;
@@ -11,11 +12,12 @@ interface ActionItem {
   priority: string | null;
   meetingId: string | null;
   meetingTitle?: string | null;
+  description?: string | null;
 }
 
-type Filter = 'all' | 'open' | 'done';
+type Filter = 'all' | 'open' | 'in_progress' | 'done';
 
-function formatDueDate(dateStr: string | null): string {
+function formatDue(dateStr: string | null): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   const now = new Date();
@@ -28,203 +30,388 @@ function formatDueDate(dateStr: string | null): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
 }
 
+function cycleStatus(current: string | null): string {
+  if (current === 'open') return 'in_progress';
+  if (current === 'in_progress') return 'done';
+  return 'open';
+}
+
 export default function ActionItemsPage() {
   const [items, setItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  // Detail panel state
+  const [selected, setSelected] = useState<ActionItem | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editAssignee, setEditAssignee] = useState('');
+  const [editStatus, setEditStatus] = useState('open');
+  const [editDue, setEditDue] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/action-items');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error();
       const data: ActionItem[] = await res.json();
       setItems(data);
-    } catch {
-      // ignore
-    } finally {
+    } catch { /* ignore */ } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
+  const assignees = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of items) {
+      if (item.assignee) set.add(item.assignee);
+    }
+    return Array.from(set).sort();
+  }, [items]);
+
   const visible = useMemo(() => {
-    if (filter === 'open') return items.filter((i) => i.status !== 'done');
-    if (filter === 'done') return items.filter((i) => i.status === 'done');
-    return items;
-  }, [items, filter]);
+    let result = items;
+    if (filter === 'open') result = result.filter((i) => i.status === 'open' || i.status === null);
+    else if (filter === 'in_progress') result = result.filter((i) => i.status === 'in_progress');
+    else if (filter === 'done') result = result.filter((i) => i.status === 'done');
+    if (assigneeFilter !== 'all') result = result.filter((i) => i.assignee === assigneeFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((i) =>
+        i.title.toLowerCase().includes(q) ||
+        (i.assignee?.toLowerCase().includes(q) ?? false) ||
+        (i.meetingTitle?.toLowerCase().includes(q) ?? false)
+      );
+    }
+    return result;
+  }, [items, filter, assigneeFilter, search]);
 
   const counts = useMemo(() => ({
     all: items.length,
-    open: items.filter((i) => i.status !== 'done').length,
+    open: items.filter((i) => i.status === 'open' || i.status === null).length,
+    in_progress: items.filter((i) => i.status === 'in_progress').length,
     done: items.filter((i) => i.status === 'done').length,
   }), [items]);
 
-  const handleToggle = useCallback(async (id: string) => {
-    const item = items.find((i) => i.id === id);
-    if (!item) return;
-    const newStatus = item.status === 'done' ? 'open' : 'done';
+  // Group by meeting
+  const grouped = useMemo(() => {
+    const groups = new Map<string, ActionItem[]>();
+    for (const item of visible) {
+      const key = item.meetingTitle ?? '(No Meeting)';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    return Array.from(groups.entries());
+  }, [visible]);
 
-    // Optimistic update
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, status: newStatus } : i));
-    setTogglingId(id);
-
+  const handleCycleStatus = useCallback(async (item: ActionItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newStatus = cycleStatus(item.status);
+    setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, status: newStatus } : i));
+    if (selected?.id === item.id) setEditStatus(newStatus);
     try {
-      await fetch(`/api/action-items/${id}`, {
+      await fetch(`/api/action-items/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
     } catch {
-      // Revert
-      setItems((prev) => prev.map((i) => i.id === id ? { ...i, status: item.status } : i));
-    } finally {
-      setTogglingId(null);
+      setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, status: item.status } : i));
     }
-  }, [items]);
+  }, [selected]);
+
+  const openPanel = (item: ActionItem) => {
+    setSelected(item);
+    setEditTitle(item.title);
+    setEditAssignee(item.assignee ?? '');
+    setEditStatus(item.status ?? 'open');
+    setEditDue(item.dueDate ?? '');
+    setEditNotes(item.description ?? '');
+    setPanelOpen(true);
+  };
+
+  const closePanel = () => {
+    setPanelOpen(false);
+    setSelected(null);
+  };
+
+  const handleSave = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/action-items/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          assignee: editAssignee || null,
+          status: editStatus,
+          dueDate: editDue || null,
+          description: editNotes || null,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json() as ActionItem;
+        setItems((prev) => prev.map((i) => i.id === selected.id ? { ...i, ...updated } : i));
+        setSelected((prev) => prev ? { ...prev, ...updated } : null);
+      }
+    } catch { /* ignore */ } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleCollapse = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const FILTERS: { key: Filter; label: string }[] = [
     { key: 'all', label: `All (${counts.all})` },
     { key: 'open', label: `Open (${counts.open})` },
+    { key: 'in_progress', label: `In Progress (${counts.in_progress})` },
     { key: 'done', label: `Done (${counts.done})` },
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#050505' }}>
-      {/* Top nav */}
-      <div className="top-nav">
-        <div className="amber-line">
-          <span className="amber-tag">Action Items</span>
+    <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div className="page-header">
+        <span className="page-title">Action Items</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search…"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#e5e5e7',
+              fontSize: 11,
+              padding: '5px 10px',
+              outline: 'none',
+              width: 160,
+            }}
+          />
+          {/* Filter buttons */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(f.key)}
+                className={`action-btn${filter === f.key ? ' amber' : ''}`}
+                style={{ padding: '4px 8px' }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* Assignee filter */}
+          <select
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            style={{
+              background: '#111',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#a1a1aa',
+              fontSize: 10,
+              padding: '4px 8px',
+              outline: 'none',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+            }}
+          >
+            <option value="all">All Assignees</option>
+            {assignees.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
         </div>
-        <button onClick={fetchItems} disabled={loading} className="btn-primary">
-          Refresh
-        </button>
       </div>
 
-      <div className="main-content">
-        {/* Heading */}
-        <div style={{ marginBottom: '48px' }}>
-          <h1 className="page-heading">Action Items.</h1>
-          <p className="micro-label" style={{ marginTop: '12px' }}>
-            {counts.open} open · {counts.done} completed
-          </p>
+      {/* Stat bar */}
+      <div className="stat-bar">
+        <div className="stat-bar-item">
+          <span className={`stat-bar-value${counts.open > 0 ? ' amber' : ''}`}>{counts.open}</span>
+          <span className="stat-bar-label">Open</span>
         </div>
-
-        {/* Filter tabs */}
-        <div className="filter-tabs" style={{ marginBottom: '32px' }}>
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`filter-tab${filter === f.key ? ' active' : ''}`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="stat-bar-item">
+          <span className="stat-bar-value">{counts.in_progress}</span>
+          <span className="stat-bar-label">In Progress</span>
         </div>
+        <div className="stat-bar-item">
+          <span className="stat-bar-value">{counts.done}</span>
+          <span className="stat-bar-label">Done</span>
+        </div>
+        <div className="stat-bar-item">
+          <span className="stat-bar-value">{counts.all}</span>
+          <span className="stat-bar-label">Total</span>
+        </div>
+      </div>
 
-        {/* Table */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '48px 0' }}>
-            <p className="micro-label">Loading…</p>
-          </div>
-        ) : (
-          <div className="glass-panel">
-            {/* Table header */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 140px 100px 140px',
-                padding: '12px 24px',
-                borderBottom: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              <span className="micro-label">Task</span>
-              <span className="micro-label">Assignee</span>
-              <span className="micro-label">Status</span>
-              <span className="micro-label">Meeting</span>
-            </div>
+      {/* Table header */}
+      <div className="table-header" style={{ gridTemplateColumns: '70px 1fr 120px 80px 140px' }}>
+        <span>Status</span>
+        <span>Task</span>
+        <span>Assignee</span>
+        <span>Due</span>
+        <span>Meeting</span>
+      </div>
 
-            {visible.length === 0 ? (
-              <div style={{ padding: '48px', textAlign: 'center' }}>
-                <p className="micro-label">No items in this view</p>
-              </div>
-            ) : (
-              visible.map((item) => {
-                const isDone = item.status === 'done';
-                const statusClass = isDone ? 'status-done' : (item.status === 'in_progress' ? 'status-in_progress' : 'status-open');
-                return (
-                  <div
-                    key={item.id}
-                    className="data-row"
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 140px 100px 140px',
-                      padding: '16px 24px',
-                      alignItems: 'center',
-                      opacity: isDone ? 0.6 : 1,
-                    }}
-                  >
-                    {/* Task */}
-                    <p
-                      style={{
-                        color: isDone ? '#52525b' : '#e5e5e7',
-                        fontSize: '13px',
-                        fontWeight: 500,
-                        textDecoration: isDone ? 'line-through' : 'none',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        paddingRight: '16px',
-                      }}
+      {/* Content */}
+      {loading ? (
+        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
+          <span className="cell-meta">Loading…</span>
+        </div>
+      ) : grouped.length === 0 ? (
+        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
+          <span className="cell-meta">No items in this view</span>
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {grouped.map(([meetingTitle, groupItems]) => {
+            const isCollapsed = collapsed.has(meetingTitle);
+            return (
+              <div key={meetingTitle}>
+                <div
+                  className="group-header"
+                  onClick={() => toggleCollapse(meetingTitle)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 8, color: '#52525b' }}>{isCollapsed ? '▶' : '▼'}</span>
+                    {meetingTitle}
+                  </span>
+                  <span>{groupItems.length} item{groupItems.length !== 1 ? 's' : ''}</span>
+                </div>
+                {!isCollapsed && groupItems.map((item) => {
+                  const status = item.status ?? 'open';
+                  const isSelected = selected?.id === item.id && panelOpen;
+                  const isOverdue = item.dueDate && new Date(item.dueDate) < new Date() && status !== 'done';
+                  return (
+                    <div
+                      key={item.id}
+                      className={`table-row${isSelected ? ' selected' : ''}`}
+                      style={{ gridTemplateColumns: '70px 1fr 120px 80px 140px' }}
+                      onClick={() => openPanel(item)}
                     >
-                      {item.title}
-                    </p>
-
-                    {/* Assignee */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {item.assignee ? (
-                        <>
-                          <div
-                            style={{
-                              width: '22px', height: '22px',
-                              background: '#27272a',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: '8px', fontWeight: 700, color: '#a1a1aa', flexShrink: 0,
-                            }}
-                          >
-                            {item.assignee.slice(0, 2).toUpperCase()}
-                          </div>
-                          <span className="micro-label" style={{ color: '#71717a' }}>{item.assignee}</span>
-                        </>
-                      ) : (
-                        <span className="micro-label">—</span>
-                      )}
+                      <span
+                        className={`badge-${status}`}
+                        onClick={(e) => handleCycleStatus(item, e)}
+                        title="Click to cycle status"
+                      >
+                        {status}
+                      </span>
+                      <span
+                        className="cell-primary"
+                        style={{ textDecoration: status === 'done' ? 'line-through' : 'none', color: status === 'done' ? '#52525b' : '#e5e5e7' }}
+                      >
+                        {item.title}
+                      </span>
+                      <span className="cell-meta">{item.assignee ?? '—'}</span>
+                      <span className="cell-meta" style={{ color: isOverdue ? '#d97706' : undefined }}>
+                        {formatDue(item.dueDate)}
+                      </span>
+                      <span className="cell-secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.meetingTitle ?? '—'}
+                      </span>
                     </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-                    {/* Status — click to toggle */}
-                    <button
-                      onClick={() => handleToggle(item.id)}
-                      disabled={togglingId === item.id}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
-                    >
-                      <span className={statusClass}>{item.status ?? 'open'}</span>
-                    </button>
-
-                    {/* Meeting source */}
-                    <span className="micro-label" style={{ color: '#52525b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.meetingTitle ?? '—'}
-                    </span>
-                  </div>
-                );
-              })
+      {/* Detail Panel */}
+      <DetailPanel open={panelOpen} onClose={closePanel} title={selected?.title ?? ''}>
+        {selected && (
+          <>
+            <div>
+              <div className="detail-section-label">Task</div>
+              <textarea
+                className="inline-textarea"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                style={{ marginTop: 4 }}
+              />
+            </div>
+            <div>
+              <div className="detail-section-label">Assignee</div>
+              <input
+                className="inline-input"
+                value={editAssignee}
+                onChange={(e) => setEditAssignee(e.target.value)}
+                placeholder="Unassigned"
+                style={{ marginTop: 4 }}
+              />
+            </div>
+            <div>
+              <div className="detail-section-label">Status</div>
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value)}
+                style={{
+                  background: '#111',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#e5e5e7',
+                  fontSize: 11,
+                  padding: '4px 8px',
+                  marginTop: 4,
+                  outline: 'none',
+                }}
+              >
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+            <div>
+              <div className="detail-section-label">Due Date</div>
+              <input
+                type="date"
+                className="inline-input"
+                value={editDue}
+                onChange={(e) => setEditDue(e.target.value)}
+                style={{ marginTop: 4, colorScheme: 'dark' }}
+              />
+            </div>
+            {selected.meetingTitle && (
+              <div>
+                <div className="detail-section-label">Meeting</div>
+                <div className="detail-section-value">{selected.meetingTitle}</div>
+              </div>
             )}
-          </div>
+            <div>
+              <div className="detail-section-label">Notes</div>
+              <textarea
+                className="inline-textarea"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Add notes…"
+                style={{ marginTop: 4 }}
+              />
+            </div>
+            <div style={{ paddingTop: 4 }}>
+              <button className="action-btn amber" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </>
         )}
-      </div>
+      </DetailPanel>
     </div>
   );
 }
