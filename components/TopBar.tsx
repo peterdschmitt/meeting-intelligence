@@ -1,87 +1,60 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
+
+const TITLES: Record<string, string> = {
+  '/': 'Inbox',
+  '/meetings': 'Meetings',
+  '/action-items': 'Action Items',
+  '/contacts': 'People',
+  '/companies': 'Companies',
+  '/import': 'Import',
+};
 
 export default function TopBar() {
   const [query, setQuery] = useState('');
+  const pathname = usePathname() ?? '/';
+
+  // Find best title match (longest prefix)
+  const title =
+    Object.entries(TITLES)
+      .filter(([k]) => (k === '/' ? pathname === '/' : pathname.startsWith(k)))
+      .sort((a, b) => b[0].length - a[0].length)[0]?.[1] ?? '';
 
   return (
     <header className="apex-topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flex: 1 }}>
-        <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--apex-text)', whiteSpace: 'nowrap' }}>
+          {title}
+        </span>
+        <span style={{ width: 1, height: 14, background: 'var(--apex-border-bright)' }} />
+        <div style={{ position: 'relative', flex: 1, maxWidth: 360 }}>
           <span
             className="material-symbols-outlined"
             style={{
-              position: 'absolute',
-              left: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--apex-text-muted)',
-              fontSize: 18,
-              pointerEvents: 'none',
+              position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 14, color: 'var(--apex-text-faint)', pointerEvents: 'none',
             }}
           >
             search
           </span>
           <input
-            className="apex-search"
-            placeholder="Search meetings, people, action items..."
+            className="apex-topbar-search"
+            placeholder="Search everything..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            style={{ width: '100%' }}
           />
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <button
-          aria-label="Command menu"
-          style={{
-            width: 36,
-            height: 36,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'transparent',
-            border: '1px solid var(--apex-border)',
-            borderRadius: '0.5rem',
-            color: 'var(--apex-text-secondary)',
-            cursor: 'pointer',
-          }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-            keyboard_command_key
-          </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button className="btn-icon" aria-label="Command menu" title="⌘K">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>bolt</span>
         </button>
-        <button
-          aria-label="Notifications"
-          style={{
-            width: 36,
-            height: 36,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'transparent',
-            border: '1px solid var(--apex-border)',
-            borderRadius: '0.5rem',
-            color: 'var(--apex-text-secondary)',
-            cursor: 'pointer',
-            position: 'relative',
-          }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-            notifications
-          </span>
-          <span
-            style={{
-              position: 'absolute',
-              top: 8,
-              right: 9,
-              width: 6,
-              height: 6,
-              background: 'var(--apex-primary)',
-              borderRadius: '9999px',
-            }}
-          />
+        <button className="btn-icon" aria-label="Notifications">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>notifications</span>
         </button>
       </div>
     </header>

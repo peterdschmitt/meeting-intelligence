@@ -11,6 +11,18 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+        />
+      </head>
       <body
         className="antialiased"
         style={{
@@ -20,33 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           height: '100vh',
           overflow: 'hidden',
           fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: '13px',
+          lineHeight: 1.4,
         }}
       >
-        {/* Subtle gradient background blobs */}
-        <div className="apex-bg-canvas">
-          <div
-            className="apex-bg-blob"
-            style={{
-              top: '-10%',
-              left: '-10%',
-              width: '40%',
-              height: '40%',
-              background: 'rgba(46, 98, 255, 0.08)',
-            }}
-          />
-          <div
-            className="apex-bg-blob"
-            style={{
-              bottom: '-10%',
-              right: '-10%',
-              width: '50%',
-              height: '50%',
-              background: 'rgba(167, 139, 250, 0.05)',
-              animationDelay: '-6s',
-            }}
-          />
-        </div>
-
         <Sidebar />
         <main
           style={{
@@ -55,11 +44,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             flexDirection: 'column',
             overflow: 'hidden',
             position: 'relative',
-            zIndex: 1,
+            minWidth: 0,
           }}
         >
           <TopBar />
-          <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
+          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>{children}</div>
         </main>
       </body>
     </html>
