@@ -13,9 +13,14 @@ export async function GET(request: NextRequest) {
         id: meetings.id,
         title: meetings.title,
         meetingDate: meetings.meetingDate,
+        meetingTime: meetings.meetingTime,
+        platform: meetings.platform,
         participants: meetings.participants,
         rawNotes: meetings.rawNotes,
         aiSummary: meetings.aiSummary,
+        transcript: meetings.transcript,
+        chapters: meetings.chapters,
+        keyQuestions: meetings.keyQuestions,
         source: meetings.source,
         gdriveFileId: meetings.gdriveFileId,
         companyId: meetings.companyId,
@@ -27,23 +32,30 @@ export async function GET(request: NextRequest) {
       .leftJoin(companies, eq(meetings.companyId, companies.id))
       .orderBy(desc(meetings.meetingDate));
 
+    const fullSelect = {
+      id: meetings.id,
+      title: meetings.title,
+      meetingDate: meetings.meetingDate,
+      meetingTime: meetings.meetingTime,
+      platform: meetings.platform,
+      participants: meetings.participants,
+      rawNotes: meetings.rawNotes,
+      aiSummary: meetings.aiSummary,
+      transcript: meetings.transcript,
+      chapters: meetings.chapters,
+      keyQuestions: meetings.keyQuestions,
+      source: meetings.source,
+      gdriveFileId: meetings.gdriveFileId,
+      companyId: meetings.companyId,
+      companyName: companies.name,
+      createdAt: meetings.createdAt,
+      updatedAt: meetings.updatedAt,
+    };
+
     if (filter === 'week') {
       return NextResponse.json(
         await db
-          .select({
-            id: meetings.id,
-            title: meetings.title,
-            meetingDate: meetings.meetingDate,
-            participants: meetings.participants,
-            rawNotes: meetings.rawNotes,
-            aiSummary: meetings.aiSummary,
-            source: meetings.source,
-            gdriveFileId: meetings.gdriveFileId,
-            companyId: meetings.companyId,
-            companyName: companies.name,
-            createdAt: meetings.createdAt,
-            updatedAt: meetings.updatedAt,
-          })
+          .select(fullSelect)
           .from(meetings)
           .leftJoin(companies, eq(meetings.companyId, companies.id))
           .where(gte(meetings.meetingDate, sql`date_trunc('week', now())`))
@@ -54,20 +66,7 @@ export async function GET(request: NextRequest) {
     if (filter === 'month') {
       return NextResponse.json(
         await db
-          .select({
-            id: meetings.id,
-            title: meetings.title,
-            meetingDate: meetings.meetingDate,
-            participants: meetings.participants,
-            rawNotes: meetings.rawNotes,
-            aiSummary: meetings.aiSummary,
-            source: meetings.source,
-            gdriveFileId: meetings.gdriveFileId,
-            companyId: meetings.companyId,
-            companyName: companies.name,
-            createdAt: meetings.createdAt,
-            updatedAt: meetings.updatedAt,
-          })
+          .select(fullSelect)
           .from(meetings)
           .leftJoin(companies, eq(meetings.companyId, companies.id))
           .where(gte(meetings.meetingDate, sql`date_trunc('month', now())`))

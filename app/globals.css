@@ -324,3 +324,106 @@ body {
   text-transform: uppercase; letter-spacing: 0.25em; color: #888892;
 }
 .divider { height: 1px; background: rgba(255,255,255,0.06); }
+
+/* ── Right panel sections ───────────────────────────────── */
+.rp-section {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.rp-section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 16px; cursor: pointer; user-select: none;
+  transition: background 0.1s;
+}
+.rp-section-header:hover { background: rgba(255,255,255,0.03); }
+.rp-section-title {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.22em; color: #888892;
+  display: flex; align-items: center; gap: 7px;
+}
+.rp-section-count {
+  font-size: 9px; color: #d97706; font-weight: 700;
+  background: rgba(217,119,6,0.12); border: 1px solid rgba(217,119,6,0.2);
+  padding: 0 5px; border-radius: 2px;
+}
+.rp-chevron {
+  font-size: 12px; color: #555560;
+  transition: transform 0.18s ease;
+  display: inline-block;
+}
+.rp-section-body { padding: 4px 16px 12px 16px; }
+
+/* ── Meta strip ─────────────────────────────────────────── */
+.rp-meta-strip {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  padding: 10px 16px 6px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.rp-meta-item { display: flex; flex-direction: column; gap: 2px; }
+.rp-meta-label {
+  font-size: 8px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.22em; color: #555560;
+}
+.rp-meta-value { font-size: 11px; color: #d4d4d8; }
+.rp-link { color: #d97706; cursor: pointer; }
+.rp-link:hover { text-decoration: underline; }
+
+/* ── Summary text ───────────────────────────────────────── */
+.rp-summary-text {
+  font-size: 11px; color: #b4b4bc; line-height: 1.65;
+  font-style: italic; margin: 0;
+}
+
+/* ── Status button group ────────────────────────────────── */
+.status-btn-group {
+  display: flex; gap: 4px; flex-wrap: wrap;
+}
+.status-btn {
+  font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
+  padding: 2px 7px; border: 1px solid; cursor: pointer;
+  transition: all 0.12s; font-family: var(--font-sans);
+  background: transparent;
+}
+.status-btn:hover { opacity: 0.85; }
+
+/* ── Status summary bar ─────────────────────────────────── */
+.rp-status-summary {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+/* ── Task list ──────────────────────────────────────────── */
+.task-list {
+  display: flex; flex-direction: column; gap: 0;
+}
+.task-row {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.task-row:last-child { border-bottom: none; }
+.task-row-top {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 0;
+}
+.task-title-wrap { position: relative; }
+
+/* ── Task tooltip ───────────────────────────────────────── */
+.task-tooltip {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 50;
+  background: #1a1a1a; border: 1px solid rgba(255,255,255,0.12);
+  padding: 10px 12px; width: 280px; max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  pointer-events: none;
+}
+.task-tooltip-desc {
+  font-size: 11px; color: #d4d4d8; line-height: 1.55; margin-bottom: 8px;
+}
+.task-tooltip-meta {
+  font-size: 10px; color: #888892; margin-top: 4px;
+}
+.task-tooltip-label {
+  font-size: 8px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.15em; color: #555560; margin-right: 6px;
+}
+
+/* ── Avatar link ────────────────────────────────────────── */
+.avatar-link { transition: opacity 0.12s; }
+.avatar-link:hover { opacity: 0.75; }

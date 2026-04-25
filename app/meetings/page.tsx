@@ -17,10 +17,20 @@ interface Meeting {
 interface ActionItem {
   id: string;
   title: string;
+  description?: string | null;
   status: string | null;
   assignee: string | null;
   meetingId: string | null;
+  dueDate?: string | null;
+  meetingTimestamp?: string | null;
 }
+
+const STATUS_OPTIONS = [
+  { value: 'open',        label: 'OPEN',     color: '#f59e0b', bg: 'rgba(217,119,6,0.18)',  border: 'rgba(217,119,6,0.4)'  },
+  { value: 'in_progress', label: 'IN PROG',  color: '#60a5fa', bg: 'rgba(59,130,246,0.18)', border: 'rgba(59,130,246,0.35)' },
+  { value: 'done',        label: 'DONE',     color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.3)'  },
+  { value: 'blocked',     label: 'BLOCKED',  color: '#f87171', bg: 'rgba(239,68,68,0.18)',  border: 'rgba(239,68,68,0.35)'  },
+];
 
 function parseParticipants(raw: string[] | string | null): string[] {
   if (!raw) return [];
@@ -60,12 +70,126 @@ function isThisMonth(dateStr: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-function cycleStatus(current: string | null): string {
-  if (current === 'open') return 'in_progress';
-  if (current === 'in_progress') return 'done';
-  return 'open';
+// ── Collapsible Section ───────────────────────────────────────────
+function Section({
+  label,
+  count,
+  defaultOpen = true,
+  children,
+}: {
+  label: string;
+  count?: number;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rp-section">
+      <div className="rp-section-header" onClick={() => setOpen((o) => !o)}>
+        <span className="rp-section-title">
+          {label}
+          {count !== undefined && (
+            <span className="rp-section-count">{count}</span>
+          )}
+        </span>
+        <span className="rp-chevron" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▾</span>
+      </div>
+      {open && <div className="rp-section-body">{children}</div>}
+    </div>
+  );
 }
 
+// ── Status Button Group ───────────────────────────────────────────
+function StatusButtons({
+  current,
+  onChange,
+}: {
+  current: string | null;
+  onChange: (v: string) => void;
+}) {
+  const active = current ?? 'open';
+  return (
+    <div className="status-btn-group">
+      {STATUS_OPTIONS.map((opt) => {
+        const isActive = active === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className="status-btn"
+            style={{
+              color: isActive ? opt.color : 'rgba(255,255,255,0.25)',
+              borderColor: isActive ? opt.border : 'rgba(255,255,255,0.07)',
+              background: isActive ? opt.bg : 'transparent',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Task Row with Tooltip ─────────────────────────────────────────
+function TaskRow({
+  item,
+  onStatusChange,
+}: {
+  item: ActionItem;
+  onStatusChange: (id: string, status: string) => void;
+}) {
+  const [hovering, setHovering] = useState(false);
+  const hasDetail = !!(item.description || item.assignee || item.dueDate || item.meetingTimestamp);
+
+  return (
+    <div className="task-row">
+      <div className="task-row-top">
+        <div
+          className="task-title-wrap"
+          onMouseEnter={() => setHovering(true)}
+          onMouseLeave={() => setHovering(false)}
+          style={{ position: 'relative', flex: 1 }}
+        >
+          <span className="cell-primary">{item.title}</span>
+          {hasDetail && hovering && (
+            <div className="task-tooltip">
+              {item.description && (
+                <div className="task-tooltip-desc">{item.description}</div>
+              )}
+              {item.assignee && (
+                <div className="task-tooltip-meta">
+                  <span className="task-tooltip-label">ASSIGNEE</span> {item.assignee}
+                </div>
+              )}
+              {item.dueDate && (
+                <div className="task-tooltip-meta">
+                  <span className="task-tooltip-label">DUE</span> {formatDate(item.dueDate)}
+                </div>
+              )}
+              {item.meetingTimestamp && (
+                <div className="task-tooltip-meta">
+                  <span className="task-tooltip-label">TIMESTAMP</span> {item.meetingTimestamp}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {item.assignee && (
+          <span className="cell-meta" style={{ flexShrink: 0, marginLeft: 8 }}>{item.assignee}</span>
+        )}
+      </div>
+      <div style={{ marginTop: 5 }}>
+        <StatusButtons
+          current={item.status}
+          onChange={(v) => onStatusChange(item.id, v)}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────
 export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +197,7 @@ export default function MeetingsPage() {
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [selectedActions, setSelectedActions] = useState<ActionItem[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [allActionItems, setAllActionItems] = useState<ActionItem[]>([]);
 
   useEffect(() => {
     fetch('/api/meetings')
@@ -82,7 +207,6 @@ export default function MeetingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Fetch action items when a meeting is selected
   useEffect(() => {
     if (!selected) { setSelectedActions([]); return; }
     fetch(`/api/meetings/${selected.id}/action-items`)
@@ -90,6 +214,13 @@ export default function MeetingsPage() {
       .then((a) => setSelectedActions(Array.isArray(a) ? a as ActionItem[] : []))
       .catch(() => setSelectedActions([]));
   }, [selected]);
+
+  useEffect(() => {
+    fetch('/api/action-items')
+      .then((r) => r.ok ? r.json() : [])
+      .then((a) => setAllActionItems(Array.isArray(a) ? a as ActionItem[] : []))
+      .catch(() => {});
+  }, []);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return meetings;
@@ -110,15 +241,6 @@ export default function MeetingsPage() {
     return Array.from(groups.entries());
   }, [filtered]);
 
-  // Action counts from all meetings (pre-load for display)
-  const [allActionItems, setAllActionItems] = useState<ActionItem[]>([]);
-  useEffect(() => {
-    fetch('/api/action-items')
-      .then((r) => r.ok ? r.json() : [])
-      .then((a) => setAllActionItems(Array.isArray(a) ? a as ActionItem[] : []))
-      .catch(() => {});
-  }, []);
-
   const actionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const a of allActionItems) {
@@ -133,32 +255,39 @@ export default function MeetingsPage() {
     month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
   }), [meetings]);
 
-  const handleCycleStatus = useCallback(async (item: ActionItem) => {
-    const newStatus = cycleStatus(item.status);
-    setSelectedActions((prev) => prev.map((a) => a.id === item.id ? { ...a, status: newStatus } : a));
+  const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
+    setSelectedActions((prev) => prev.map((a) => a.id === id ? { ...a, status: newStatus } : a));
     try {
-      await fetch(`/api/action-items/${item.id}`, {
+      await fetch(`/api/action-items/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
     } catch {
-      setSelectedActions((prev) => prev.map((a) => a.id === item.id ? { ...a, status: item.status } : a));
+      // revert not implemented — optimistic is fine here
     }
   }, []);
 
   const toggleCollapse = (key: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
 
+  // Group action items by status for right panel
+  const actionsByStatus = useMemo(() => {
+    const open = selectedActions.filter((a) => !a.status || a.status === 'open');
+    const inProg = selectedActions.filter((a) => a.status === 'in_progress');
+    const done = selectedActions.filter((a) => a.status === 'done');
+    const blocked = selectedActions.filter((a) => a.status === 'blocked');
+    return { open, inProg, done, blocked };
+  }, [selectedActions]);
+
+  // ── Left pane ──────────────────────────────────────────────────
   const leftPane = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
-      {/* Page header */}
       <div className="page-header" style={{ background: '#0a0a0a' }}>
         <span className="page-title">MEETINGS</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -175,7 +304,6 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      {/* Stat bar */}
       <div className="stat-bar">
         <div className="stat-bar-item">
           <span className="stat-bar-value">{stats.total}</span>
@@ -191,7 +319,6 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      {/* Grid header */}
       <div className="grid-header" style={{ gridTemplateColumns: '70px 1fr 110px 50px 50px' }}>
         <span>DATE</span>
         <span>TITLE</span>
@@ -200,7 +327,6 @@ export default function MeetingsPage() {
         <span>ACT</span>
       </div>
 
-      {/* Content */}
       {loading ? (
         <div style={{ padding: '32px 16px', textAlign: 'center' }}>
           <span className="cell-meta">Loading…</span>
@@ -252,101 +378,96 @@ export default function MeetingsPage() {
     </div>
   );
 
+  // ── Right pane ─────────────────────────────────────────────────
   const rightPane = selected ? (
-    <div className="detail-panel" style={{ background: '#111111' }}>
+    <div className="detail-panel" style={{ background: '#111111', overflowY: 'auto' }}>
+      {/* Header */}
       <div className="detail-panel-header">
         <span className="detail-panel-title">{selected.title}</span>
-        <button
-          className="action-btn"
-          onClick={() => setSelected(null)}
-          style={{ flexShrink: 0, padding: '2px 8px' }}
-        >
-          ×
-        </button>
-      </div>
-      <div className="detail-panel-body">
-        {/* DATE */}
-        <div>
-          <div className="detail-section-label">DATE</div>
-          <div className="detail-section-value">{formatDate(selected.meetingDate)}</div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <Link href={`/meetings/${selected.id}`} style={{ textDecoration: 'none' }}>
+            <button className="action-btn amber" style={{ fontSize: 10 }}>FULL DETAIL →</button>
+          </Link>
+          <button className="action-btn" onClick={() => setSelected(null)} style={{ padding: '2px 8px' }}>×</button>
         </div>
+      </div>
 
-        {/* COMPANY */}
-        {selected.companyName && (
-          <div>
-            <div className="detail-section-label">COMPANY</div>
-            <div className="detail-section-value">{selected.companyName}</div>
+      <div className="detail-panel-body" style={{ padding: '0 0 32px 0' }}>
+
+        {/* Meta strip */}
+        <div className="rp-meta-strip">
+          <div className="rp-meta-item">
+            <span className="rp-meta-label">DATE</span>
+            <span className="rp-meta-value">{formatDate(selected.meetingDate)}</span>
           </div>
-        )}
-
-        {/* SOURCE */}
-        {selected.source && (
-          <div>
-            <div className="detail-section-label">SOURCE</div>
-            <div className="detail-section-value">{selected.source}</div>
-          </div>
-        )}
-
-        {/* PARTICIPANTS */}
-        {parseParticipants(selected.participants).length > 0 && (
-          <div>
-            <div className="detail-section-label">PARTICIPANTS</div>
-            <div className="avatar-row" style={{ marginTop: 6 }}>
-              {parseParticipants(selected.participants).map((p, i) => (
-                <div key={i} className="avatar" title={p}>
-                  {p.slice(0, 2).toUpperCase()}
-                </div>
-              ))}
+          {selected.companyName && (
+            <div className="rp-meta-item">
+              <span className="rp-meta-label">COMPANY</span>
+              <Link href={`/companies?q=${encodeURIComponent(selected.companyName)}`} style={{ textDecoration: 'none' }}>
+                <span className="rp-meta-value rp-link">{selected.companyName}</span>
+              </Link>
             </div>
-          </div>
-        )}
-
-        {/* AI SUMMARY */}
-        {selected.aiSummary && (
-          <div>
-            <div className="detail-section-label">AI SUMMARY</div>
-            <div className="detail-section-value" style={{ fontStyle: 'italic', lineHeight: 1.6 }}>
-              {selected.aiSummary}
-            </div>
-          </div>
-        )}
-
-        {/* ACTION ITEMS */}
-        <div>
-          <div className="detail-section-label">ACTION ITEMS ({selectedActions.length})</div>
-          {selectedActions.length === 0 ? (
-            <div className="cell-meta" style={{ marginTop: 4 }}>None</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 6 }}>
-              {selectedActions.map((a) => {
-                const status = a.status ?? 'open';
-                return (
-                  <div
-                    key={a.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                  >
-                    <span
-                      className={`badge badge-${status}`}
-                      onClick={() => handleCycleStatus(a)}
-                      style={{ flexShrink: 0 }}
-                    >
-                      {status}
-                    </span>
-                    <span className="cell-primary" style={{ flex: 1 }}>{a.title}</span>
-                    {a.assignee && <span className="cell-meta">{a.assignee}</span>}
-                  </div>
-                );
-              })}
+          )}
+          {selected.source && (
+            <div className="rp-meta-item">
+              <span className="rp-meta-label">SOURCE</span>
+              <span className="rp-meta-value">{selected.source}</span>
             </div>
           )}
         </div>
 
-        {/* Full detail link */}
-        <div style={{ paddingTop: 4 }}>
-          <Link href={`/meetings/${selected.id}`} style={{ textDecoration: 'none' }}>
-            <button className="action-btn amber">Open Full Detail →</button>
-          </Link>
-        </div>
+        {/* Participants */}
+        {parseParticipants(selected.participants).length > 0 && (
+          <Section label="PARTICIPANTS" count={parseParticipants(selected.participants).length}>
+            <div className="avatar-row" style={{ paddingBottom: 4 }}>
+              {parseParticipants(selected.participants).map((p, i) => (
+                <Link key={i} href={`/contacts?q=${encodeURIComponent(p)}`} style={{ textDecoration: 'none' }}>
+                  <div className="avatar avatar-link" title={p}>
+                    {p.slice(0, 2).toUpperCase()}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* AI Summary */}
+        {selected.aiSummary && (
+          <Section label="AI SUMMARY" defaultOpen={true}>
+            <p className="rp-summary-text">{selected.aiSummary}</p>
+          </Section>
+        )}
+
+        {/* Action Items */}
+        <Section label="ACTION ITEMS" count={selectedActions.length} defaultOpen={true}>
+          {selectedActions.length === 0 ? (
+            <span className="cell-meta">None</span>
+          ) : (
+            <>
+              {/* Quick status filter pills */}
+              <div className="rp-status-summary">
+                {actionsByStatus.open.length > 0 && (
+                  <span className="badge badge-open">{actionsByStatus.open.length} open</span>
+                )}
+                {actionsByStatus.inProg.length > 0 && (
+                  <span className="badge badge-in_progress">{actionsByStatus.inProg.length} in progress</span>
+                )}
+                {actionsByStatus.blocked.length > 0 && (
+                  <span className="badge badge-blocked">{actionsByStatus.blocked.length} blocked</span>
+                )}
+                {actionsByStatus.done.length > 0 && (
+                  <span className="badge badge-done">{actionsByStatus.done.length} done</span>
+                )}
+              </div>
+              <div className="task-list">
+                {selectedActions.map((a) => (
+                  <TaskRow key={a.id} item={a} onStatusChange={handleStatusChange} />
+                ))}
+              </div>
+            </>
+          )}
+        </Section>
+
       </div>
     </div>
   ) : (

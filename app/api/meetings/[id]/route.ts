@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { meetings, actionItems } from '@/lib/schema';
+import { meetings, companies, actionItems } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
 export async function GET(
@@ -10,22 +10,36 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const [meeting] = await db
-      .select()
+    const rows = await db
+      .select({
+        id: meetings.id,
+        title: meetings.title,
+        meetingDate: meetings.meetingDate,
+        meetingTime: meetings.meetingTime,
+        platform: meetings.platform,
+        participants: meetings.participants,
+        rawNotes: meetings.rawNotes,
+        aiSummary: meetings.aiSummary,
+        transcript: meetings.transcript,
+        chapters: meetings.chapters,
+        keyQuestions: meetings.keyQuestions,
+        source: meetings.source,
+        gdriveFileId: meetings.gdriveFileId,
+        companyId: meetings.companyId,
+        companyName: companies.name,
+        createdAt: meetings.createdAt,
+        updatedAt: meetings.updatedAt,
+      })
       .from(meetings)
+      .leftJoin(companies, eq(meetings.companyId, companies.id))
       .where(eq(meetings.id, id))
       .limit(1);
 
-    if (!meeting) {
+    if (rows.length === 0) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
 
-    const items = await db
-      .select()
-      .from(actionItems)
-      .where(eq(actionItems.meetingId, id));
-
-    return NextResponse.json({ ...meeting, actionItems: items });
+    return NextResponse.json(rows[0]);
   } catch (error) {
     console.error('[GET /api/meetings/[id]]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

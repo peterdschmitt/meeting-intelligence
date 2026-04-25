@@ -11,7 +11,22 @@ export async function GET(
     const { id } = await params;
 
     const items = await db
-      .select()
+      .select({
+        id: actionItems.id,
+        title: actionItems.title,
+        description: actionItems.description,
+        assignee: actionItems.assignee,
+        dueDate: actionItems.dueDate,
+        status: actionItems.status,
+        priority: actionItems.priority,
+        meetingId: actionItems.meetingId,
+        contactId: actionItems.contactId,
+        meetingTimestamp: actionItems.meetingTimestamp,
+        doneToken: actionItems.doneToken,
+        completedAt: actionItems.completedAt,
+        createdAt: actionItems.createdAt,
+        updatedAt: actionItems.updatedAt,
+      })
       .from(actionItems)
       .where(eq(actionItems.meetingId, id));
 

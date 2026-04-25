@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         priority: actionItems.priority,
         meetingId: actionItems.meetingId,
         contactId: actionItems.contactId,
+        meetingTimestamp: actionItems.meetingTimestamp,
         doneToken: actionItems.doneToken,
         completedAt: actionItems.completedAt,
         createdAt: actionItems.createdAt,
