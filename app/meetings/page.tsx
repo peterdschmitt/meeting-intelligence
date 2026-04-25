@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import ResizableSplit from '@/components/ResizableSplit';
 
 interface Meeting {
   id: string;
@@ -16,21 +15,11 @@ interface Meeting {
 
 interface ActionItem {
   id: string;
-  title: string;
-  description?: string | null;
-  status: string | null;
-  assignee: string | null;
   meetingId: string | null;
-  dueDate?: string | null;
-  meetingTimestamp?: string | null;
+  status: string | null;
 }
 
-const STATUS_OPTIONS = [
-  { value: 'open',        label: 'OPEN',     color: '#f59e0b', bg: 'rgba(217,119,6,0.18)',  border: 'rgba(217,119,6,0.4)'  },
-  { value: 'in_progress', label: 'IN PROG',  color: '#60a5fa', bg: 'rgba(59,130,246,0.18)', border: 'rgba(59,130,246,0.35)' },
-  { value: 'done',        label: 'DONE',     color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.3)'  },
-  { value: 'blocked',     label: 'BLOCKED',  color: '#f87171', bg: 'rgba(239,68,68,0.18)',  border: 'rgba(239,68,68,0.35)'  },
-];
+type Tab = 'recent' | 'upcoming' | 'archived';
 
 function parseParticipants(raw: string[] | string | null): string[] {
   if (!raw) return [];
@@ -40,450 +29,410 @@ function parseParticipants(raw: string[] | string | null): string[] {
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(dateStr));
 }
 
-function getWeekLabel(dateStr: string | null): string {
-  if (!dateStr) return 'Unknown';
-  const d = new Date(dateStr);
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return `Week of ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(monday)}`;
+function formatTime(dateStr: string | null): string {
+  if (!dateStr) return '';
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(dateStr));
 }
 
-function isThisWeek(dateStr: string | null): boolean {
+function isPast(dateStr: string | null): boolean {
+  if (!dateStr) return true;
+  return new Date(dateStr).getTime() < Date.now() - 24 * 60 * 60 * 1000;
+}
+
+function isUpcoming(dateStr: string | null): boolean {
   if (!dateStr) return false;
-  const d = new Date(dateStr);
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - now.getDay());
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return d >= start && d < end;
+  const d = new Date(dateStr).getTime();
+  const now = Date.now();
+  return d > now - 60 * 60 * 1000; // within the last hour or future
 }
 
-function isThisMonth(dateStr: string | null): boolean {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+function summaryExcerpt(s: string | null | undefined, max = 200): string | null {
+  if (!s) return null;
+  const trimmed = s.trim();
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max).trimEnd() + '…';
 }
 
-// ── Collapsible Section ───────────────────────────────────────────
-function Section({
-  label,
-  count,
-  defaultOpen = true,
-  children,
-}: {
-  label: string;
-  count?: number;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="rp-section">
-      <div className="rp-section-header" onClick={() => setOpen((o) => !o)}>
-        <span className="rp-section-title">
-          {label}
-          {count !== undefined && (
-            <span className="rp-section-count">{count}</span>
-          )}
-        </span>
-        <span className="rp-chevron" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▾</span>
-      </div>
-      {open && <div className="rp-section-body">{children}</div>}
-    </div>
-  );
-}
+const SOURCE_CHIP: Record<string, { label: string; cls: string }> = {
+  manual: { label: 'Manual',       cls: 'apex-chip-primary' },
+  gdrive: { label: 'Google Drive', cls: 'apex-chip-primary' },
+  voice:  { label: 'Voice Note',   cls: 'apex-chip-violet' },
+};
 
-// ── Status Button Group ───────────────────────────────────────────
-function StatusButtons({
-  current,
-  onChange,
-}: {
-  current: string | null;
-  onChange: (v: string) => void;
-}) {
-  const active = current ?? 'open';
-  return (
-    <div className="status-btn-group">
-      {STATUS_OPTIONS.map((opt) => {
-        const isActive = active === opt.value;
-        return (
-          <button
-            key={opt.value}
-            onClick={() => onChange(opt.value)}
-            className="status-btn"
-            style={{
-              color: isActive ? opt.color : 'rgba(255,255,255,0.25)',
-              borderColor: isActive ? opt.border : 'rgba(255,255,255,0.07)',
-              background: isActive ? opt.bg : 'transparent',
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Task Row with Tooltip ─────────────────────────────────────────
-function TaskRow({
-  item,
-  onStatusChange,
-}: {
-  item: ActionItem;
-  onStatusChange: (id: string, status: string) => void;
-}) {
-  const [hovering, setHovering] = useState(false);
-  const hasDetail = !!(item.description || item.assignee || item.dueDate || item.meetingTimestamp);
-
-  return (
-    <div className="task-row">
-      <div className="task-row-top">
-        <div
-          className="task-title-wrap"
-          onMouseEnter={() => setHovering(true)}
-          onMouseLeave={() => setHovering(false)}
-          style={{ position: 'relative', flex: 1 }}
-        >
-          <span className="cell-primary">{item.title}</span>
-          {hasDetail && hovering && (
-            <div className="task-tooltip">
-              {item.description && (
-                <div className="task-tooltip-desc">{item.description}</div>
-              )}
-              {item.assignee && (
-                <div className="task-tooltip-meta">
-                  <span className="task-tooltip-label">ASSIGNEE</span> {item.assignee}
-                </div>
-              )}
-              {item.dueDate && (
-                <div className="task-tooltip-meta">
-                  <span className="task-tooltip-label">DUE</span> {formatDate(item.dueDate)}
-                </div>
-              )}
-              {item.meetingTimestamp && (
-                <div className="task-tooltip-meta">
-                  <span className="task-tooltip-label">TIMESTAMP</span> {item.meetingTimestamp}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {item.assignee && (
-          <span className="cell-meta" style={{ flexShrink: 0, marginLeft: 8 }}>{item.assignee}</span>
-        )}
-      </div>
-      <div style={{ marginTop: 5 }}>
-        <StatusButtons
-          current={item.status}
-          onChange={(v) => onStatusChange(item.id, v)}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ── Main Page ─────────────────────────────────────────────────────
 export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Meeting | null>(null);
-  const [selectedActions, setSelectedActions] = useState<ActionItem[]>([]);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [allActionItems, setAllActionItems] = useState<ActionItem[]>([]);
+  const [tab, setTab] = useState<Tab>('recent');
 
   useEffect(() => {
-    fetch('/api/meetings')
-      .then((r) => r.ok ? r.json() : [])
-      .then((m) => setMeetings(Array.isArray(m) ? m as Meeting[] : []))
+    Promise.all([
+      fetch('/api/meetings').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/action-items').then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([m, a]) => {
+        setMeetings(Array.isArray(m) ? (m as Meeting[]) : []);
+        setActionItems(Array.isArray(a) ? (a as ActionItem[]) : []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!selected) { setSelectedActions([]); return; }
-    fetch(`/api/meetings/${selected.id}/action-items`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((a) => setSelectedActions(Array.isArray(a) ? a as ActionItem[] : []))
-      .catch(() => setSelectedActions([]));
-  }, [selected]);
-
-  useEffect(() => {
-    fetch('/api/action-items')
-      .then((r) => r.ok ? r.json() : [])
-      .then((a) => setAllActionItems(Array.isArray(a) ? a as ActionItem[] : []))
-      .catch(() => {});
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return meetings;
-    const q = search.toLowerCase();
-    return meetings.filter((m) =>
-      m.title.toLowerCase().includes(q) ||
-      (m.companyName?.toLowerCase().includes(q) ?? false)
-    );
-  }, [meetings, search]);
-
-  const grouped = useMemo(() => {
-    const groups: Map<string, Meeting[]> = new Map();
-    for (const m of filtered) {
-      const label = getWeekLabel(m.meetingDate);
-      if (!groups.has(label)) groups.set(label, []);
-      groups.get(label)!.push(m);
-    }
-    return Array.from(groups.entries());
-  }, [filtered]);
-
   const actionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const a of allActionItems) {
-      if (a.meetingId) counts[a.meetingId] = (counts[a.meetingId] ?? 0) + 1;
+    for (const a of actionItems) {
+      if (a.meetingId && a.status !== 'done') {
+        counts[a.meetingId] = (counts[a.meetingId] ?? 0) + 1;
+      }
     }
     return counts;
-  }, [allActionItems]);
+  }, [actionItems]);
 
-  const stats = useMemo(() => ({
-    total: meetings.length,
-    week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
-    month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
-  }), [meetings]);
-
-  const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
-    setSelectedActions((prev) => prev.map((a) => a.id === id ? { ...a, status: newStatus } : a));
-    try {
-      await fetch(`/api/action-items/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-    } catch {
-      // revert not implemented — optimistic is fine here
+  const filtered = useMemo(() => {
+    let list = meetings;
+    if (tab === 'recent')   list = list.filter((m) => isPast(m.meetingDate));
+    if (tab === 'upcoming') list = list.filter((m) => isUpcoming(m.meetingDate));
+    // archived: catch-all = everything older than 60 days
+    if (tab === 'archived') {
+      const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+      list = list.filter((m) => m.meetingDate && new Date(m.meetingDate).getTime() < cutoff);
     }
-  }, []);
 
-  const toggleCollapse = (key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (m) =>
+          m.title.toLowerCase().includes(q) ||
+          (m.companyName?.toLowerCase().includes(q) ?? false) ||
+          (m.aiSummary?.toLowerCase().includes(q) ?? false),
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      const ad = a.meetingDate ? new Date(a.meetingDate).getTime() : 0;
+      const bd = b.meetingDate ? new Date(b.meetingDate).getTime() : 0;
+      return bd - ad;
     });
-  };
+  }, [meetings, search, tab]);
 
-  // Group action items by status for right panel
-  const actionsByStatus = useMemo(() => {
-    const open = selectedActions.filter((a) => !a.status || a.status === 'open');
-    const inProg = selectedActions.filter((a) => a.status === 'in_progress');
-    const done = selectedActions.filter((a) => a.status === 'done');
-    const blocked = selectedActions.filter((a) => a.status === 'blocked');
-    return { open, inProg, done, blocked };
-  }, [selectedActions]);
+  const [hero, ...rest] = filtered;
 
-  // ── Left pane ──────────────────────────────────────────────────
-  const leftPane = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
-      <div className="page-header" style={{ background: '#0a0a0a' }}>
-        <span className="page-title">MEETINGS</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="search-input"
-          />
-          <Link href="/import" style={{ textDecoration: 'none' }}>
-            <button className="action-btn amber">NEW</button>
-          </Link>
+  return (
+    <div style={{ position: 'relative', zIndex: 1, padding: '2rem', maxWidth: '1440px', margin: '0 auto' }}>
+      {/* Header */}
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          marginBottom: '1.5rem',
+          gap: '1.5rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <p
+            className="apex-label-caps"
+            style={{ marginBottom: '0.5rem', color: 'var(--apex-text-muted)' }}
+          >
+            Navigation / Meetings
+          </p>
+          <h1 className="apex-h1" style={{ marginBottom: '0.375rem' }}>
+            Meeting Intelligence
+          </h1>
+          <p style={{ color: 'var(--apex-text-secondary)', fontSize: '0.9375rem' }}>
+            Review synthesized transcripts and AI deliverables for your latest deal-flow interactions.
+          </p>
         </div>
-      </div>
 
-      <div className="stat-bar">
-        <div className="stat-bar-item">
-          <span className="stat-bar-value">{stats.total}</span>
-          <span className="stat-bar-label">Total</span>
-        </div>
-        <div className="stat-bar-item">
-          <span className="stat-bar-value">{stats.week}</span>
-          <span className="stat-bar-label">This Week</span>
-        </div>
-        <div className="stat-bar-item">
-          <span className="stat-bar-value">{stats.month}</span>
-          <span className="stat-bar-label">This Month</span>
-        </div>
-      </div>
-
-      <div className="grid-header" style={{ gridTemplateColumns: '70px 1fr 110px 50px 50px' }}>
-        <span>DATE</span>
-        <span>TITLE</span>
-        <span>COMPANY</span>
-        <span>PPL</span>
-        <span>ACT</span>
-      </div>
-
-      {loading ? (
-        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-          <span className="cell-meta">Loading…</span>
-        </div>
-      ) : grouped.length === 0 ? (
-        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-          <span className="cell-meta">No meetings found</span>
-        </div>
-      ) : (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {grouped.map(([weekLabel, weekMeetings]) => {
-            const isCollapsed = collapsed.has(weekLabel);
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {(['recent', 'upcoming', 'archived'] as Tab[]).map((t) => {
+            const active = tab === t;
             return (
-              <div key={weekLabel}>
-                <div className="group-header" onClick={() => toggleCollapse(weekLabel)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 8, color: '#52525b' }}>{isCollapsed ? '▶' : '▼'}</span>
-                    {weekLabel}
-                  </span>
-                  <span>{weekMeetings.length} meeting{weekMeetings.length !== 1 ? 's' : ''}</span>
-                </div>
-                {!isCollapsed && weekMeetings.map((m) => {
-                  const parts = parseParticipants(m.participants);
-                  const isSelected = selected?.id === m.id;
-                  return (
-                    <div
-                      key={m.id}
-                      className={`grid-row${isSelected ? ' selected' : ''}`}
-                      style={{ gridTemplateColumns: '70px 1fr 110px 50px 50px' }}
-                      onClick={() => setSelected(isSelected ? null : m)}
-                    >
-                      <span className="cell-meta">{formatDate(m.meetingDate)}</span>
-                      <span className="cell-primary">{m.title}</span>
-                      <span className="cell-secondary">{m.companyName ?? '—'}</span>
-                      <span className="cell-meta" style={{ textAlign: 'center' }}>{parts.length || '—'}</span>
-                      <span className="cell-meta" style={{ textAlign: 'center' }}>
-                        {(actionCounts[m.id] ?? 0) > 0
-                          ? <span style={{ color: '#d97706' }}>{actionCounts[m.id]}</span>
-                          : '—'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={active ? 'apex-btn-primary' : 'apex-btn-ghost'}
+                style={{
+                  textTransform: 'capitalize',
+                  fontSize: '0.75rem',
+                  padding: '0.375rem 0.875rem',
+                }}
+              >
+                {t}
+              </button>
             );
           })}
         </div>
+      </header>
+
+      {/* Search row */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 480 }}>
+          <span
+            className="material-symbols-outlined"
+            style={{
+              position: 'absolute',
+              left: 12,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: 18,
+              color: 'var(--apex-text-muted)',
+              pointerEvents: 'none',
+            }}
+          >
+            search
+          </span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title, company, summary..."
+            className="apex-search"
+            style={{ width: '100%' }}
+          />
+        </div>
+        <Link href="/import" className="apex-btn-primary">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+          Import Meeting
+        </Link>
+      </div>
+
+      {/* Hero card + grid */}
+      {loading ? (
+        <p style={{ color: 'var(--apex-text-muted)', fontSize: '0.875rem', padding: '2rem' }}>Loading…</p>
+      ) : filtered.length === 0 ? (
+        <div
+          className="apex-card"
+          style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--apex-text-muted)' }}
+        >
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 36, opacity: 0.4, display: 'block', margin: '0 auto 0.75rem' }}
+          >
+            event_busy
+          </span>
+          <p style={{ fontSize: '0.875rem', marginBottom: '0.25rem' }}>No meetings match this view.</p>
+          <p style={{ fontSize: '0.75rem' }}>
+            Try a different tab or{' '}
+            <Link href="/import" style={{ color: 'var(--apex-primary-bright)' }}>
+              import a new meeting
+            </Link>
+            .
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Hero */}
+          {hero && <HeroCard meeting={hero} actionCount={actionCounts[hero.id] ?? 0} />}
+
+          {/* Grid */}
+          {rest.length > 0 && (
+            <div
+              style={{
+                marginTop: '1.5rem',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                gap: '1.25rem',
+              }}
+            >
+              {rest.map((m) => (
+                <MeetingCard key={m.id} meeting={m} actionCount={actionCounts[m.id] ?? 0} />
+              ))}
+            </div>
+          )}
+
+          <p
+            className="apex-label-caps"
+            style={{ marginTop: '2rem', color: 'var(--apex-text-muted)' }}
+          >
+            Showing {filtered.length} of {meetings.length} meetings
+          </p>
+        </>
       )}
     </div>
   );
+}
 
-  // ── Right pane ─────────────────────────────────────────────────
-  const rightPane = selected ? (
-    <div className="detail-panel" style={{ background: '#111111', overflowY: 'auto' }}>
-      {/* Header */}
-      <div className="detail-panel-header">
-        <span className="detail-panel-title">{selected.title}</span>
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <Link href={`/meetings/${selected.id}`} style={{ textDecoration: 'none' }}>
-            <button className="action-btn amber" style={{ fontSize: 10 }}>FULL DETAIL →</button>
-          </Link>
-          <button className="action-btn" onClick={() => setSelected(null)} style={{ padding: '2px 8px' }}>×</button>
-        </div>
-      </div>
-
-      <div className="detail-panel-body" style={{ padding: '0 0 32px 0' }}>
-
-        {/* Meta strip */}
-        <div className="rp-meta-strip">
-          <div className="rp-meta-item">
-            <span className="rp-meta-label">DATE</span>
-            <span className="rp-meta-value">{formatDate(selected.meetingDate)}</span>
-          </div>
-          {selected.companyName && (
-            <div className="rp-meta-item">
-              <span className="rp-meta-label">COMPANY</span>
-              <Link href={`/companies?q=${encodeURIComponent(selected.companyName)}`} style={{ textDecoration: 'none' }}>
-                <span className="rp-meta-value rp-link">{selected.companyName}</span>
-              </Link>
-            </div>
-          )}
-          {selected.source && (
-            <div className="rp-meta-item">
-              <span className="rp-meta-label">SOURCE</span>
-              <span className="rp-meta-value">{selected.source}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Participants */}
-        {parseParticipants(selected.participants).length > 0 && (
-          <Section label="PARTICIPANTS" count={parseParticipants(selected.participants).length}>
-            <div className="avatar-row" style={{ paddingBottom: 4 }}>
-              {parseParticipants(selected.participants).map((p, i) => (
-                <Link key={i} href={`/contacts?q=${encodeURIComponent(p)}`} style={{ textDecoration: 'none' }}>
-                  <div className="avatar avatar-link" title={p}>
-                    {p.slice(0, 2).toUpperCase()}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* AI Summary */}
-        {selected.aiSummary && (
-          <Section label="AI SUMMARY" defaultOpen={true}>
-            <p className="rp-summary-text">{selected.aiSummary}</p>
-          </Section>
-        )}
-
-        {/* Action Items */}
-        <Section label="ACTION ITEMS" count={selectedActions.length} defaultOpen={true}>
-          {selectedActions.length === 0 ? (
-            <span className="cell-meta">None</span>
-          ) : (
-            <>
-              {/* Quick status filter pills */}
-              <div className="rp-status-summary">
-                {actionsByStatus.open.length > 0 && (
-                  <span className="badge badge-open">{actionsByStatus.open.length} open</span>
-                )}
-                {actionsByStatus.inProg.length > 0 && (
-                  <span className="badge badge-in_progress">{actionsByStatus.inProg.length} in progress</span>
-                )}
-                {actionsByStatus.blocked.length > 0 && (
-                  <span className="badge badge-blocked">{actionsByStatus.blocked.length} blocked</span>
-                )}
-                {actionsByStatus.done.length > 0 && (
-                  <span className="badge badge-done">{actionsByStatus.done.length} done</span>
-                )}
-              </div>
-              <div className="task-list">
-                {selectedActions.map((a) => (
-                  <TaskRow key={a.id} item={a} onStatusChange={handleStatusChange} />
-                ))}
-              </div>
-            </>
-          )}
-        </Section>
-
-      </div>
-    </div>
-  ) : (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111111' }}>
-      <span className="cell-meta">← Select a meeting</span>
-    </div>
-  );
+function HeroCard({ meeting, actionCount }: { meeting: Meeting; actionCount: number }) {
+  const parts = parseParticipants(meeting.participants);
+  const summary = summaryExcerpt(meeting.aiSummary, 320);
+  const sourceCfg = SOURCE_CHIP[meeting.source ?? 'manual'] ?? SOURCE_CHIP.manual;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
-      <ResizableSplit
-        left={leftPane}
-        right={rightPane}
-        defaultLeftPct={58}
-        storageKey="meetings-split"
-      />
-    </div>
+    <Link href={`/meetings/${meeting.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <article
+        className="apex-card"
+        style={{
+          padding: '1.75rem',
+          borderColor: 'var(--apex-border-bright)',
+          background: 'linear-gradient(180deg, rgba(46,98,255,0.06) 0%, rgba(24,24,27,0.4) 60%)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: 3,
+            background: 'var(--apex-primary)',
+          }}
+        />
+
+        <header style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.875rem', flexWrap: 'wrap' }}>
+          <span className="apex-label-caps" style={{ color: 'var(--apex-primary-bright)' }}>
+            {meeting.companyName ?? 'Latest meeting'}
+          </span>
+          {actionCount > 0 && <span className="apex-chip apex-chip-violet">{actionCount} OPEN ACTIONS</span>}
+          <span className={`apex-chip ${sourceCfg.cls}`}>{sourceCfg.label}</span>
+        </header>
+
+        <h2 className="apex-h2" style={{ marginBottom: '0.875rem', maxWidth: '70ch' }}>
+          {meeting.title}
+        </h2>
+
+        {summary && (
+          <p
+            style={{
+              color: 'var(--apex-text-secondary)',
+              fontSize: '0.9375rem',
+              lineHeight: 1.55,
+              marginBottom: '1.25rem',
+              fontStyle: 'italic',
+              maxWidth: '78ch',
+            }}
+          >
+            “{summary}”
+          </p>
+        )}
+
+        <footer
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div
+            className="apex-mono"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', color: 'var(--apex-text-muted)', fontSize: '0.8125rem' }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>calendar_today</span>
+              {formatDate(meeting.meetingDate)}
+            </span>
+            {meeting.meetingDate && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>schedule</span>
+                {formatTime(meeting.meetingDate)}
+              </span>
+            )}
+            {parts.length > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>group</span>
+                {parts.length} participants
+              </span>
+            )}
+          </div>
+          <span
+            className="apex-label-caps"
+            style={{ color: 'var(--apex-primary-bright)', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+          >
+            View Full Report
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>
+          </span>
+        </footer>
+      </article>
+    </Link>
+  );
+}
+
+function MeetingCard({ meeting, actionCount }: { meeting: Meeting; actionCount: number }) {
+  const parts = parseParticipants(meeting.participants);
+  const summary = summaryExcerpt(meeting.aiSummary, 110);
+  const sourceCfg = SOURCE_CHIP[meeting.source ?? 'manual'] ?? SOURCE_CHIP.manual;
+
+  return (
+    <Link href={`/meetings/${meeting.id}`} style={{ textDecoration: 'none' }}>
+      <article
+        className="apex-card"
+        style={{
+          padding: '1.25rem',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+        }}
+      >
+        <header style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+          <p
+            className="apex-label-caps"
+            style={{ color: 'var(--apex-text-muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {meeting.companyName ?? 'No company'}
+          </p>
+          <span className={`apex-chip ${sourceCfg.cls}`}>{sourceCfg.label}</span>
+        </header>
+
+        <h3 className="apex-h3" style={{ fontSize: '1rem', lineHeight: 1.35 }}>
+          {meeting.title}
+        </h3>
+
+        {summary && (
+          <p
+            style={{
+              color: 'var(--apex-text-muted)',
+              fontSize: '0.8125rem',
+              lineHeight: 1.55,
+              flex: 1,
+            }}
+          >
+            {summary}
+          </p>
+        )}
+
+        <footer
+          style={{
+            marginTop: 'auto',
+            paddingTop: '0.5rem',
+            borderTop: '1px solid var(--apex-border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <span className="apex-mono" style={{ color: 'var(--apex-text-muted)', fontSize: '0.75rem' }}>
+            {formatDate(meeting.meetingDate)}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {parts.length > 0 && (
+              <span
+                style={{ color: 'var(--apex-text-muted)', fontSize: '0.6875rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>group</span>
+                {parts.length}
+              </span>
+            )}
+            {actionCount > 0 && (
+              <span
+                className="apex-chip apex-chip-violet"
+                style={{ fontSize: '0.625rem', padding: '0.125rem 0.4375rem' }}
+              >
+                {actionCount} ACT
+              </span>
+            )}
+          </div>
+        </footer>
+      </article>
+    </Link>
   );
 }

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { companies, contacts, meetings, actionItems } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
@@ -2531,7 +2531,25 @@ const SEED_DATA = [
   }
 ];
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Gate behind a shared secret. Set SEED_TOKEN in env, then call:
+  //   GET /api/seed?token=...   or   Authorization: Bearer <token>
+  const expected = process.env.SEED_TOKEN;
+  if (!expected) {
+    return NextResponse.json(
+      { error: 'Seeding disabled — set SEED_TOKEN in environment to enable.' },
+      { status: 503 },
+    );
+  }
+  const url = new URL(request.url);
+  const provided =
+    url.searchParams.get('token') ??
+    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ??
+    '';
+  if (provided !== expected) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     // Check if already seeded
     const existingMeetings = await db.select().from(meetings).limit(1);

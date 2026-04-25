@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { outreachLog, actionItems, meetings, contacts } from '@/lib/schema';
 import { eq, desc } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { getOpenAI } from '@/lib/openai';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -78,7 +77,7 @@ Sign off: "Best, Sophia — on behalf of Peter Schmitt, Pine Lake Capital"`;
 
     const userPrompt = `Action item: "${item.title}" — assigned to ${assignee} in the "${meetingTitle}" meeting on ${meetingDate}. Current status: ${status}.${notes ? ' Context: ' + notes : ''}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -116,7 +115,6 @@ ${emailBody}`;
     }
 
     // Log to outreach_log
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [logEntry] = await db.insert(outreachLog).values({
       actionItemId: id,
       assignee,
@@ -124,7 +122,7 @@ ${emailBody}`;
       emailTo: recipientEmail ?? null,
       emailSubject: subject,
       emailSent,
-    } as any).returning();
+    }).returning();
 
     return NextResponse.json({
       message,

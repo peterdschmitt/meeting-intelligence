@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
+import TopBar from '@/components/TopBar';
 
 export const metadata: Metadata = {
   title: 'Pine Lake — Meeting Intelligence',
@@ -9,29 +10,56 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-        <link
-          href="https://fonts.googleapis.com/icon?family=Material+Icons"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" className="dark">
       <body
-        style={{ background: '#050505', color: '#e5e5e7', display: 'flex', height: '100vh', overflow: 'hidden' }}
         className="antialiased"
+        style={{
+          background: 'var(--apex-bg)',
+          color: 'var(--apex-text)',
+          display: 'flex',
+          height: '100vh',
+          overflow: 'hidden',
+          fontFamily: 'Inter, system-ui, sans-serif',
+        }}
       >
+        {/* Subtle gradient background blobs */}
+        <div className="apex-bg-canvas">
+          <div
+            className="apex-bg-blob"
+            style={{
+              top: '-10%',
+              left: '-10%',
+              width: '40%',
+              height: '40%',
+              background: 'rgba(46, 98, 255, 0.08)',
+            }}
+          />
+          <div
+            className="apex-bg-blob"
+            style={{
+              bottom: '-10%',
+              right: '-10%',
+              width: '50%',
+              height: '50%',
+              background: 'rgba(167, 139, 250, 0.05)',
+              animationDelay: '-6s',
+            }}
+          />
+        </div>
+
         <Sidebar />
         <main
-          className="flex-1"
-          style={{ background: '#0a0a0a', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            position: 'relative',
+            zIndex: 1,
+          }}
         >
-          {children}
+          <TopBar />
+          <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
         </main>
       </body>
     </html>

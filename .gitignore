@@ -42,3 +42,12 @@ next-env.d.ts
 
 .env.local
 .env
+
+# local sqlite (dev only — never commit)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# design references
+.design-ref/

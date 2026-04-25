@@ -16,9 +16,25 @@ const config: Config = {
           700: '#161e35',
           600: '#1e2840',
         },
+        apex: {
+          bg: '#0a0a0a',
+          'bg-deep': '#050507',
+          card: '#18181b',
+          elevated: '#1a1a1f',
+          primary: '#2e62ff',
+          'primary-bright': '#4f7dff',
+          secondary: '#b7c4ff',
+          violet: '#a78bfa',
+          emerald: '#34d399',
+          error: '#f87171',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['"Space Grotesk"', 'monospace'],
+      },
+      maxWidth: {
+        apex: '1440px',
       },
       animation: {
         'gradient-shift': 'gradient-shift 8s ease infinite',

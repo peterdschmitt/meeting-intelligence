@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import ResizableSplit from '@/components/ResizableSplit';
 
 interface ActionItem {
   id: string;
@@ -33,11 +32,54 @@ interface OutreachEntry {
   responseReceived: string | null;
 }
 
-type Filter = 'all' | 'open' | 'in_progress' | 'done';
+type Filter = 'all' | 'pending' | 'done';
+
+const STATUS_CHIP: Record<string, string> = {
+  open: 'apex-chip-primary',
+  in_progress: 'apex-chip-violet',
+  done: 'apex-chip-emerald',
+  blocked: 'apex-chip-error',
+  deferred: 'apex-chip-violet',
+  cancelled: 'apex-chip-error',
+};
+
+const PRIORITY_CHIP: Record<string, string> = {
+  critical: 'apex-chip-error',
+  high: 'apex-chip-error',
+  medium: 'apex-chip-violet',
+  low: 'apex-chip-primary',
+};
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
+}
+
+function relativeDue(dateStr: string | null | undefined): { label: string; tone: 'overdue' | 'soon' | 'normal' | 'none' } {
+  if (!dateStr) return { label: 'No due date', tone: 'none' };
+  const due = new Date(dateStr).getTime();
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+  if (due < now - oneDay) {
+    const days = Math.floor((now - due) / oneDay);
+    return { label: `${days}d overdue`, tone: 'overdue' };
+  }
+  if (due < now + 2 * oneDay) {
+    return { label: 'Due soon', tone: 'soon' };
+  }
+  return { label: formatDate(dateStr), tone: 'normal' };
+}
+
+function isToday(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function initials(name: string | null | undefined): string {
+  if (!name) return '·';
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
 }
 
 function cycleStatus(current: string | null): string {
@@ -52,7 +94,6 @@ export default function ActionItemsPage() {
   const [filter, setFilter] = useState<Filter>('all');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   // Detail panel state
   const [selected, setSelected] = useState<ActionItem | null>(null);
@@ -65,8 +106,6 @@ export default function ActionItemsPage() {
   const [editNotes, setEditNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [applyingStatus, setApplyingStatus] = useState(false);
-
-  // History + outreach
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [outreach, setOutreach] = useState<OutreachEntry[]>([]);
   const [generatedMsg, setGeneratedMsg] = useState('');
@@ -87,7 +126,6 @@ export default function ActionItemsPage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  // Fetch history + outreach when item selected
   useEffect(() => {
     if (!selected) {
       setHistory([]);
@@ -95,57 +133,44 @@ export default function ActionItemsPage() {
       setGeneratedMsg('');
       return;
     }
-    fetch(`/api/action-items/${selected.id}/history`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((h) => setHistory(Array.isArray(h) ? h : []))
-      .catch(() => setHistory([]));
-    fetch(`/api/action-items/${selected.id}/outreach`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((o) => setOutreach(Array.isArray(o) ? o : []))
-      .catch(() => setOutreach([]));
+    fetch(`/api/action-items/${selected.id}/history`).then((r) => r.ok ? r.json() : []).then((h) => setHistory(Array.isArray(h) ? h : [])).catch(() => setHistory([]));
+    fetch(`/api/action-items/${selected.id}/outreach`).then((r) => r.ok ? r.json() : []).then((o) => setOutreach(Array.isArray(o) ? o : [])).catch(() => setOutreach([]));
   }, [selected]);
 
   const assignees = useMemo(() => {
     const set = new Set<string>();
-    for (const item of items) {
-      if (item.assignee) set.add(item.assignee);
-    }
+    for (const item of items) if (item.assignee) set.add(item.assignee);
     return Array.from(set).sort();
   }, [items]);
 
+  const counts = useMemo(() => ({
+    total: items.length,
+    open: items.filter((i) => i.status !== 'done').length,
+    done: items.filter((i) => i.status === 'done').length,
+    dueToday: items.filter((i) => i.status !== 'done' && isToday(i.dueDate)).length,
+    overdue: items.filter((i) => {
+      if (i.status === 'done' || !i.dueDate) return false;
+      return new Date(i.dueDate).getTime() < Date.now() - 24 * 60 * 60 * 1000;
+    }).length,
+  }), [items]);
+
+  const completionRate = counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
+
   const visible = useMemo(() => {
     let result = items;
-    if (filter === 'open') result = result.filter((i) => i.status === 'open' || i.status === null);
-    else if (filter === 'in_progress') result = result.filter((i) => i.status === 'in_progress');
-    else if (filter === 'done') result = result.filter((i) => i.status === 'done');
+    if (filter === 'pending') result = result.filter((i) => i.status !== 'done');
+    if (filter === 'done') result = result.filter((i) => i.status === 'done');
     if (assigneeFilter !== 'all') result = result.filter((i) => i.assignee === assigneeFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) =>
         i.title.toLowerCase().includes(q) ||
         (i.assignee?.toLowerCase().includes(q) ?? false) ||
-        (i.meetingTitle?.toLowerCase().includes(q) ?? false)
+        (i.meetingTitle?.toLowerCase().includes(q) ?? false),
       );
     }
     return result;
   }, [items, filter, assigneeFilter, search]);
-
-  const counts = useMemo(() => ({
-    all: items.length,
-    open: items.filter((i) => i.status === 'open' || i.status === null).length,
-    in_progress: items.filter((i) => i.status === 'in_progress').length,
-    done: items.filter((i) => i.status === 'done').length,
-  }), [items]);
-
-  const grouped = useMemo(() => {
-    const groups = new Map<string, ActionItem[]>();
-    for (const item of visible) {
-      const key = item.meetingTitle ?? '(No Meeting)';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(item);
-    }
-    return Array.from(groups.entries());
-  }, [visible]);
 
   const handleCycleStatus = useCallback(async (item: ActionItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -191,7 +216,6 @@ export default function ActionItemsPage() {
       setSelected((prev) => prev ? { ...prev, status: editStatus } : null);
       setOriginalStatus(editStatus);
       setStatusNote('');
-      // Refresh history
       const h = await fetch(`/api/action-items/${selected.id}/history`).then((r) => r.ok ? r.json() : []);
       setHistory(Array.isArray(h) ? h : []);
     } catch { /* ignore */ } finally {
@@ -235,7 +259,6 @@ export default function ActionItemsPage() {
         const data = await res.json();
         setGeneratedMsg(data.message ?? '');
         setLoggedMsgId(data.logId ?? null);
-        // Refresh outreach log
         const o = await fetch(`/api/action-items/${selected.id}/outreach`).then((r) => r.ok ? r.json() : []);
         setOutreach(Array.isArray(o) ? o : []);
       }
@@ -244,366 +267,429 @@ export default function ActionItemsPage() {
     }
   };
 
-  const toggleCollapse = (key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const FILTERS: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'ALL' },
-    { key: 'open', label: 'OPEN' },
-    { key: 'in_progress', label: 'IN PROGRESS' },
-    { key: 'done', label: 'DONE' },
-  ];
-
-  const leftPane = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
-      {/* Page header */}
-      <div className="page-header" style={{ background: '#0a0a0a' }}>
-        <span className="page-title">ACTION ITEMS</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="search-input"
-          />
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`filter-btn${filter === f.key ? ' active' : ''}`}
-            >
-              {f.label}
-            </button>
-          ))}
-          <select
-            value={assigneeFilter}
-            onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="inline-select"
-            style={{ width: 130 }}
-          >
-            <option value="all">All Assignees</option>
-            {assignees.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
+  return (
+    <div style={{ position: 'relative', zIndex: 1, padding: '2rem', maxWidth: '1440px', margin: '0 auto' }}>
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '1.5rem', gap: '1.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <p className="apex-label-caps" style={{ marginBottom: '0.5rem' }}>Action Terminal</p>
+          <h1 className="apex-h1" style={{ marginBottom: '0.375rem' }}>Action Items</h1>
+          <p style={{ color: 'var(--apex-text-secondary)', fontSize: '0.9375rem' }}>
+            Tracking {counts.total} action items across all meetings.
+          </p>
         </div>
+      </header>
+
+      {/* Stat tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        <BigStat label="Total Items" value={counts.total} accent="primary" subtitle={`${counts.done} closed`} />
+        <BigStat label="In Progress" value={counts.open} accent="violet" />
+        <BigStat label="Due Today" value={counts.dueToday} accent={counts.dueToday > 0 ? 'error' : 'muted'} subtitle={counts.overdue > 0 ? `Overdue: ${counts.overdue}` : undefined} />
+        <BigStat label="Completion Rate" value={`${completionRate}%`} accent="emerald" />
       </div>
 
-      {/* Stat bar */}
-      <div className="stat-bar">
-        <div className="stat-bar-item">
-          <span className={`stat-bar-value${counts.open > 0 ? ' amber' : ''}`}>{counts.open}</span>
-          <span className="stat-bar-label">Open</span>
-        </div>
-        <div className="stat-bar-item">
-          <span className="stat-bar-value">{counts.in_progress}</span>
-          <span className="stat-bar-label">In Progress</span>
-        </div>
-        <div className="stat-bar-item">
-          <span className="stat-bar-value">{counts.done}</span>
-          <span className="stat-bar-label">Done</span>
-        </div>
-        <div className="stat-bar-item">
-          <span className="stat-bar-value">{counts.all}</span>
-          <span className="stat-bar-label">Total</span>
-        </div>
-      </div>
-
-      {/* Grid header */}
-      <div className="grid-header" style={{ gridTemplateColumns: '64px 70px 110px 1fr 120px' }}>
-        <span>STATUS</span>
-        <span>DATE</span>
-        <span>ASSIGNEE</span>
-        <span>TASK</span>
-        <span>MEETING</span>
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-          <span className="cell-meta">Loading…</span>
-        </div>
-      ) : grouped.length === 0 ? (
-        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-          <span className="cell-meta">No items in this view</span>
-        </div>
-      ) : (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {grouped.map(([meetingTitle, groupItems]) => {
-            const isCollapsed = collapsed.has(meetingTitle);
+      {/* Filter row */}
+      <div className="apex-card" style={{ padding: '0.875rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.375rem' }}>
+          {(['all', 'pending', 'done'] as Filter[]).map((f) => {
+            const active = filter === f;
             return (
-              <div key={meetingTitle}>
-                <div className="group-header" onClick={() => toggleCollapse(meetingTitle)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 8, color: '#52525b' }}>{isCollapsed ? '▶' : '▼'}</span>
-                    {meetingTitle}
-                  </span>
-                  <span>{groupItems.length} item{groupItems.length !== 1 ? 's' : ''}</span>
-                </div>
-                {!isCollapsed && groupItems.map((item) => {
-                  const status = item.status ?? 'open';
-                  const isSelected = selected?.id === item.id;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`grid-row${isSelected ? ' selected' : ''}`}
-                      style={{ gridTemplateColumns: '64px 70px 110px 1fr 120px' }}
-                      onClick={() => openDetail(item)}
-                    >
-                      <span
-                        className={`badge badge-${status}`}
-                        onClick={(e) => handleCycleStatus(item, e)}
-                        title="Click to cycle status"
-                      >
-                        {status}
-                      </span>
-                      <span className="cell-meta">{formatDate(item.createdAt)}</span>
-                      <span className="cell-secondary">{item.assignee ?? '—'}</span>
-                      <span className={status === 'done' ? 'cell-done' : 'cell-primary'}>{item.title}</span>
-                      <span className="cell-meta">{item.meetingTitle ?? '—'}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={active ? 'apex-btn-primary' : 'apex-btn-ghost'}
+                style={{ fontSize: '0.75rem', padding: '0.375rem 0.875rem', textTransform: 'capitalize' }}
+              >
+                {f}
+              </button>
             );
           })}
         </div>
-      )}
-    </div>
-  );
 
-  const rightPane = selected ? (
-    <div className="detail-panel" style={{ background: '#111111' }}>
-      <div className="detail-panel-header">
-        <span className="detail-panel-title">{selected.title}</span>
-        <button
-          className="action-btn"
-          onClick={closeDetail}
-          style={{ flexShrink: 0, padding: '2px 8px' }}
+        <div style={{ flex: 1, minWidth: 240, position: 'relative' }}>
+          <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--apex-text-muted)' }}>search</span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search task, assignee, meeting..."
+            className="apex-search"
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        <select
+          value={assigneeFilter}
+          onChange={(e) => setAssigneeFilter(e.target.value)}
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid var(--apex-border)',
+            color: 'var(--apex-text)',
+            padding: '0.375rem 0.75rem',
+            borderRadius: '0.5rem',
+            fontSize: '0.8125rem',
+            outline: 'none',
+            fontFamily: 'inherit',
+          }}
         >
-          ×
-        </button>
+          <option value="all">All Assignees</option>
+          {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
       </div>
-      <div className="detail-panel-body">
-        {/* 1. TASK */}
-        <div>
-          <div className="detail-section-label">TASK</div>
-          <textarea
-            className="inline-textarea"
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            style={{ marginTop: 4 }}
-          />
-        </div>
 
-        {/* 2. ASSIGNEE */}
-        <div>
-          <div className="detail-section-label">ASSIGNEE</div>
-          <input
-            className="inline-input"
-            value={editAssignee}
-            onChange={(e) => setEditAssignee(e.target.value)}
-            placeholder="Unassigned"
-            style={{ marginTop: 4 }}
-          />
-        </div>
-
-        {/* 3. STATUS */}
-        <div>
-          <div className="detail-section-label">STATUS</div>
-          <select
-            value={editStatus}
-            onChange={(e) => setEditStatus(e.target.value)}
-            className="inline-select"
-            style={{ marginTop: 4 }}
-          >
-            <option value="open">Open</option>
-            <option value="in_progress">In Progress</option>
-            <option value="done">Done</option>
-            <option value="blocked">Blocked</option>
-            <option value="deferred">Deferred</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </div>
-
-        {/* 4. NOTE ON CHANGE */}
-        {editStatus !== originalStatus && (
-          <div>
-            <div className="detail-section-label">NOTE ON CHANGE</div>
-            <textarea
-              className="inline-textarea"
-              value={statusNote}
-              onChange={(e) => setStatusNote(e.target.value)}
-              placeholder="Why is the status changing?"
-              style={{ marginTop: 4, minHeight: 56 }}
-            />
+      {/* List + side detail */}
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 420px' : '1fr', gap: '1.25rem', alignItems: 'flex-start' }}>
+        <div className="apex-card" style={{ padding: '0.5rem', overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 140px 110px 90px 32px', gap: '0.75rem', padding: '0.625rem 0.875rem', borderBottom: '1px solid var(--apex-border)' }}>
+            <span />
+            <span className="apex-label-caps">Task</span>
+            <span className="apex-label-caps">Priority</span>
+            <span className="apex-label-caps">Due</span>
+            <span className="apex-label-caps">Owner</span>
+            <span />
           </div>
-        )}
 
-        {/* 5. APPLY STATUS CHANGE */}
-        {editStatus !== originalStatus && (
-          <button
-            className="action-btn amber"
-            onClick={handleApplyStatus}
-            disabled={applyingStatus}
-          >
-            {applyingStatus ? 'Applying…' : 'Apply Status Change'}
-          </button>
-        )}
-
-        {/* 6. DUE DATE */}
-        <div>
-          <div className="detail-section-label">DUE DATE</div>
-          <input
-            type="date"
-            className="inline-input"
-            value={editDue}
-            onChange={(e) => setEditDue(e.target.value)}
-            style={{ marginTop: 4, colorScheme: 'dark' }}
-          />
-        </div>
-
-        {/* 7. MEETING */}
-        {selected.meetingTitle && (
-          <div>
-            <div className="detail-section-label">MEETING</div>
-            <div className="cell-secondary" style={{ marginTop: 4 }}>{selected.meetingTitle}</div>
-          </div>
-        )}
-
-        {/* 8. NOTES */}
-        <div>
-          <div className="detail-section-label">NOTES</div>
-          <textarea
-            className="inline-textarea"
-            value={editNotes}
-            onChange={(e) => setEditNotes(e.target.value)}
-            placeholder="Add notes…"
-            style={{ marginTop: 4 }}
-          />
-        </div>
-
-        {/* 9. SAVE CHANGES */}
-        <button
-          className="action-btn amber"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
-
-        <div className="divider" />
-
-        {/* 10. STATUS HISTORY */}
-        <div>
-          <div className="detail-section-label">Status History</div>
-          {history.length === 0 ? (
-            <div className="cell-meta" style={{ marginTop: 4 }}>No history yet</div>
+          {loading ? (
+            <p style={{ padding: '2rem', textAlign: 'center', color: 'var(--apex-text-muted)', fontSize: '0.8125rem' }}>Loading…</p>
+          ) : visible.length === 0 ? (
+            <p style={{ padding: '2rem', textAlign: 'center', color: 'var(--apex-text-muted)', fontSize: '0.8125rem' }}>No items match this view.</p>
           ) : (
-            <div style={{ marginTop: 6 }}>
-              <div className="history-row" style={{ marginBottom: 2 }}>
-                <span className="cell-meta" style={{ fontWeight: 600 }}>WHEN</span>
-                <span className="cell-meta" style={{ fontWeight: 600 }}>FROM</span>
-                <span className="cell-meta" style={{ fontWeight: 600 }}>TO</span>
-                <span className="cell-meta" style={{ fontWeight: 600 }}>NOTE</span>
-              </div>
-              {history.map((h) => (
-                <div key={h.id} className="history-row">
-                  <span className="cell-meta">{formatDate(h.changedAt)}</span>
-                  <span className={`badge badge-${h.oldStatus ?? 'open'}`} style={{ fontSize: 8 }}>{h.oldStatus ?? '—'}</span>
-                  <span className={`badge badge-${h.newStatus}`} style={{ fontSize: 8 }}>{h.newStatus}</span>
-                  <span className="cell-meta">{h.note ?? '—'}</span>
-                </div>
-              ))}
+            <div>
+              {visible.map((item) => {
+                const status = item.status ?? 'open';
+                const due = relativeDue(item.dueDate);
+                const isSelected = selected?.id === item.id;
+                const isDone = status === 'done';
+                const priorityChip = PRIORITY_CHIP[item.priority ?? 'medium'] ?? PRIORITY_CHIP.medium;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => openDetail(item)}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '24px 1fr 140px 110px 90px 32px',
+                      gap: '0.75rem',
+                      padding: '0.75rem 0.875rem',
+                      width: '100%',
+                      background: isSelected ? 'rgba(46,98,255,0.06)' : 'transparent',
+                      border: 'none',
+                      borderLeft: isSelected ? '2px solid var(--apex-primary)' : '2px solid transparent',
+                      borderBottom: '1px solid var(--apex-border)',
+                      color: 'var(--apex-text)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      alignItems: 'center',
+                      transition: 'background 0.12s ease',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.025)'; }}
+                    onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                  >
+                    <span
+                      onClick={(e) => handleCycleStatus(item, e)}
+                      title="Click to cycle status"
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: '9999px',
+                        border: `1.5px solid ${isDone ? 'var(--apex-emerald)' : 'var(--apex-border-bright)'}`,
+                        background: isDone ? 'var(--apex-emerald-soft)' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isDone && <span className="material-symbols-outlined" style={{ fontSize: 12, color: 'var(--apex-emerald)' }}>check</span>}
+                    </span>
+
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--apex-text)', textDecoration: isDone ? 'line-through' : 'none', opacity: isDone ? 0.6 : 1, margin: 0, marginBottom: '0.125rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.title}
+                      </p>
+                      {item.meetingTitle && (
+                        <p className="apex-mono" style={{ fontSize: '0.6875rem', color: 'var(--apex-text-muted)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.meetingTitle}
+                        </p>
+                      )}
+                    </div>
+
+                    <span className={`apex-chip ${priorityChip}`}>{(item.priority ?? 'medium').toUpperCase()}</span>
+
+                    <span
+                      className="apex-mono"
+                      style={{
+                        fontSize: '0.75rem',
+                        color: due.tone === 'overdue' ? 'var(--apex-error)' : due.tone === 'soon' ? 'var(--apex-violet)' : 'var(--apex-text-secondary)',
+                      }}
+                    >
+                      {due.label}
+                    </span>
+
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', minWidth: 0 }}>
+                      <Avatar name={item.assignee} />
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--apex-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.assignee?.split(' ')[0] ?? '—'}
+                      </span>
+                    </span>
+
+                    <span className={`apex-chip ${STATUS_CHIP[status] ?? 'apex-chip-primary'}`} style={{ justifySelf: 'end', fontSize: '0.625rem' }}>
+                      {status.replace('_', ' ').toUpperCase().slice(0, 3)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
+
+          <p className="apex-label-caps" style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--apex-text-muted)' }}>
+            Showing {visible.length} of {counts.total}
+          </p>
         </div>
 
-        <div className="divider" />
+        {/* Detail drawer */}
+        {selected && (
+          <aside className="apex-card-elevated" style={{ padding: '1.25rem', position: 'sticky', top: '1.5rem', maxHeight: 'calc(100vh - 8rem)', overflow: 'auto' }}>
+            <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem' }}>
+              <div style={{ minWidth: 0 }}>
+                <p className="apex-label-caps" style={{ marginBottom: '0.25rem' }}>Action Detail</p>
+                <h3 className="apex-h3" style={{ fontSize: '1rem', lineHeight: 1.3 }}>{selected.title}</h3>
+              </div>
+              <button
+                onClick={closeDetail}
+                aria-label="Close"
+                style={{
+                  width: 28, height: 28, borderRadius: '0.5rem',
+                  background: 'transparent', border: '1px solid var(--apex-border)',
+                  color: 'var(--apex-text-secondary)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+              </button>
+            </header>
 
-        {/* 11. AI OUTREACH */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div className="detail-section-label" style={{ marginBottom: 0 }}>AI Outreach</div>
-            <button
-              className="action-btn amber"
-              onClick={handleGenerate}
-              disabled={generating}
-              style={{ fontSize: 9, padding: '3px 8px' }}
-            >
-              {generating ? 'Generating…' : '⚡ Generate'}
-            </button>
-          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              <Field label="Task">
+                <textarea
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  rows={2}
+                  style={textareaStyle}
+                />
+              </Field>
 
-          {/* Generated message for review */}
-          {generatedMsg && (
-            <div style={{ marginBottom: 10 }}>
-              <div className="detail-section-label" style={{ marginBottom: 4 }}>GENERATED MESSAGE</div>
-              <textarea
-                className="inline-textarea"
-                value={generatedMsg}
-                onChange={(e) => setGeneratedMsg(e.target.value)}
-                style={{ minHeight: 120 }}
-              />
-              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                <button
-                  className="action-btn amber"
-                  onClick={() => setGeneratedMsg('')}
-                  style={{ fontSize: 9 }}
-                >
-                  Discard
-                </button>
-                {loggedMsgId && (
-                  <span className="cell-meta" style={{ lineHeight: '24px' }}>✓ Logged as outreach</span>
+              <Field label="Assignee">
+                <input
+                  value={editAssignee}
+                  onChange={(e) => setEditAssignee(e.target.value)}
+                  placeholder="Unassigned"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <Field label="Status">
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="deferred">Deferred</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </Field>
+                <Field label="Due Date">
+                  <input
+                    type="date"
+                    value={editDue}
+                    onChange={(e) => setEditDue(e.target.value)}
+                    style={{ ...inputStyle, colorScheme: 'dark' }}
+                  />
+                </Field>
+              </div>
+
+              {editStatus !== originalStatus && (
+                <>
+                  <Field label="Note on Change">
+                    <textarea
+                      value={statusNote}
+                      onChange={(e) => setStatusNote(e.target.value)}
+                      placeholder="Why is the status changing?"
+                      rows={2}
+                      style={textareaStyle}
+                    />
+                  </Field>
+                  <button onClick={handleApplyStatus} disabled={applyingStatus} className="apex-btn-primary">
+                    {applyingStatus ? 'Applying…' : 'Apply Status Change'}
+                  </button>
+                </>
+              )}
+
+              <Field label="Notes">
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add notes…"
+                  rows={3}
+                  style={textareaStyle}
+                />
+              </Field>
+
+              <button onClick={handleSave} disabled={saving} className="apex-btn-primary" style={{ width: '100%' }}>
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+
+              {/* History */}
+              <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--apex-border)' }}>
+                <p className="apex-label-caps" style={{ marginBottom: '0.5rem' }}>Status History</p>
+                {history.length === 0 ? (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--apex-text-muted)' }}>No history yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    {history.map((h) => (
+                      <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
+                        <span className="apex-mono" style={{ color: 'var(--apex-text-muted)', minWidth: 64 }}>{formatDate(h.changedAt)}</span>
+                        <span className={`apex-chip ${STATUS_CHIP[h.oldStatus ?? 'open'] ?? 'apex-chip-primary'}`} style={{ fontSize: '0.5625rem' }}>
+                          {(h.oldStatus ?? '—').slice(0, 4).toUpperCase()}
+                        </span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--apex-text-muted)' }}>arrow_forward</span>
+                        <span className={`apex-chip ${STATUS_CHIP[h.newStatus] ?? 'apex-chip-primary'}`} style={{ fontSize: '0.5625rem' }}>
+                          {h.newStatus.slice(0, 4).toUpperCase()}
+                        </span>
+                        {h.note && (
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--apex-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                            “{h.note}”
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* AI Outreach */}
+              <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--apex-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <p className="apex-label-caps">AI Outreach</p>
+                  <button onClick={handleGenerate} disabled={generating} className="apex-btn-ghost" style={{ fontSize: '0.6875rem', padding: '0.25rem 0.625rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
+                    {generating ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
+
+                {generatedMsg && (
+                  <div style={{ marginBottom: '0.625rem' }}>
+                    <textarea
+                      value={generatedMsg}
+                      onChange={(e) => setGeneratedMsg(e.target.value)}
+                      rows={6}
+                      style={textareaStyle}
+                    />
+                    {loggedMsgId && (
+                      <p style={{ fontSize: '0.6875rem', color: 'var(--apex-emerald)', marginTop: '0.25rem' }}>
+                        ✓ Logged to outreach
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {outreach.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {outreach.map((o) => (
+                      <div key={o.id} className="apex-card-flat" style={{ padding: '0.625rem 0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--apex-text-secondary)', fontWeight: 600 }}>{o.assignee ?? '—'}</span>
+                          <span className="apex-mono" style={{ fontSize: '0.625rem', color: 'var(--apex-text-muted)' }}>{formatDate(o.sentAt)}</span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{o.messageSent}</p>
+                        {o.responseReceived && (
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--apex-border)' }}>
+                            <p className="apex-label-caps" style={{ marginBottom: '0.25rem' }}>Response</p>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--apex-text-secondary)' }}>{o.responseReceived}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
-          )}
-
-          {/* Outreach log */}
-          {outreach.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {outreach.map((o) => (
-                <div key={o.id} className="outreach-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span className="cell-secondary">{o.assignee ?? '—'}</span>
-                    <span className="cell-meta">{formatDate(o.sentAt)}</span>
-                  </div>
-                  <div className="detail-section-value" style={{ whiteSpace: 'pre-wrap', fontSize: 11 }}>{o.messageSent}</div>
-                  {o.responseReceived && (
-                    <div style={{ marginTop: 8 }}>
-                      <div className="detail-section-label">RESPONSE</div>
-                      <div className="detail-section-value" style={{ fontSize: 11 }}>{o.responseReceived}</div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </aside>
+        )}
       </div>
     </div>
-  ) : (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111111' }}>
-      <span className="cell-meta">← Select an action item</span>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid var(--apex-border)',
+  color: 'var(--apex-text)',
+  padding: '0.5rem 0.75rem',
+  borderRadius: '0.5rem',
+  fontSize: '0.8125rem',
+  outline: 'none',
+  fontFamily: 'inherit',
+};
+
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  resize: 'vertical',
+  fontFamily: 'inherit',
+  lineHeight: 1.5,
+};
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="apex-label-caps" style={{ marginBottom: '0.375rem' }}>{label}</p>
+      {children}
     </div>
   );
+}
 
+function BigStat({ label, value, accent, subtitle }: { label: string; value: number | string; accent: 'primary' | 'violet' | 'emerald' | 'error' | 'muted'; subtitle?: string }) {
+  const colorMap = {
+    primary: 'var(--apex-primary-bright)',
+    violet: 'var(--apex-violet)',
+    emerald: 'var(--apex-emerald)',
+    error: 'var(--apex-error)',
+    muted: 'var(--apex-text)',
+  } as const;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
-      <ResizableSplit
-        left={leftPane}
-        right={rightPane}
-        defaultLeftPct={58}
-        storageKey="actions-split"
-      />
+    <div className="apex-card" style={{ padding: '1.125rem 1.25rem' }}>
+      <p className="apex-label-caps" style={{ marginBottom: '0.5rem' }}>{label}</p>
+      <p className="apex-mono" style={{ fontSize: '1.875rem', fontWeight: 700, color: colorMap[accent], lineHeight: 1, letterSpacing: '-0.02em' }}>
+        {value}
+      </p>
+      {subtitle && (
+        <p style={{ fontSize: '0.6875rem', color: 'var(--apex-text-muted)', marginTop: '0.5rem' }}>{subtitle}</p>
+      )}
+    </div>
+  );
+}
+
+function Avatar({ name }: { name: string | null | undefined }) {
+  return (
+    <div
+      style={{
+        width: 22, height: 22,
+        borderRadius: '9999px',
+        background: 'var(--apex-primary-soft)',
+        border: '1px solid var(--apex-border-bright)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '0.5625rem', fontWeight: 700, color: 'var(--apex-primary-bright)',
+        flexShrink: 0,
+      }}
+    >
+      {initials(name)}
     </div>
   );
 }

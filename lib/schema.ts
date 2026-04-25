@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, date, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const companies = pgTable('companies', {
@@ -73,6 +73,9 @@ export const outreachLog = pgTable('outreach_log', {
   actionItemId: uuid('action_item_id').notNull().references(() => actionItems.id, { onDelete: 'cascade' }),
   assignee: text('assignee').notNull(),
   messageSent: text('message_sent').notNull(),
+  emailTo: text('email_to'),
+  emailSubject: text('email_subject'),
+  emailSent: boolean('email_sent').default(false),
   sentAt: timestamp('sent_at').defaultNow(),
   response: text('response'),
   respondedAt: timestamp('responded_at'),

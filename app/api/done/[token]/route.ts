@@ -114,7 +114,7 @@ export async function GET(
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
   } catch (error) {
-    console.error('[GET /api/action-items/[token]/done]', error);
+    console.error('[GET /api/done/[token]]', error);
     const html = `<!DOCTYPE html><html><body style="background:#0f172a;color:#f87171;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
       <div style="text-align:center"><h1>Something went wrong</h1><p>Please try again later.</p></div>
     </body></html>`;

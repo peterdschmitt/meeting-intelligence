@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { meetings, actionItems, type NewActionItem } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getOpenAI } from '@/lib/openai';
 
 interface ExtractedActionItem {
   title: string;
@@ -44,7 +42,7 @@ Return an object with two keys:
 Example response:
 {"actionItems":[{"title":"Send proposal","assignee":"Alice","due_date":"2024-02-01","priority":"high"}],"summary":"The team discussed Q1 roadmap. Three action items were identified around product launch."}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },

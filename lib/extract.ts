@@ -1,11 +1,7 @@
 import { db } from '@/lib/db';
 import { meetings, actionItems, type NewActionItem } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import OpenAI from 'openai';
-
-function getOpenAI() {
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
+import { getOpenAI } from '@/lib/openai';
 
 interface ExtractedActionItem {
   title: string;
