@@ -54,6 +54,7 @@ export const actionItems = pgTable('action_items', {
   meetingTimestamp: text('meeting_timestamp'),
   doneToken: uuid('done_token').defaultRandom(),
   completedAt: timestamp('completed_at'),
+  snoozedUntil: date('snoozed_until'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

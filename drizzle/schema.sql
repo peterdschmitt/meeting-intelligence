@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS outreach_log (
 ALTER TABLE outreach_log ADD COLUMN IF NOT EXISTS email_to TEXT;
 ALTER TABLE outreach_log ADD COLUMN IF NOT EXISTS email_subject TEXT;
 ALTER TABLE outreach_log ADD COLUMN IF NOT EXISTS email_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE action_items ADD COLUMN IF NOT EXISTS snoozed_until DATE;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(meeting_date DESC);

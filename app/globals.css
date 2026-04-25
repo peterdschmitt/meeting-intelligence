@@ -305,6 +305,41 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .priority-high     { background: var(--apex-amber-soft); color: var(--apex-amber); border-color: rgba(245,158,11,0.3); }
 .priority-critical { background: var(--apex-error-soft); color: var(--apex-error); border-color: rgba(248,113,113,0.35); }
 
+/* Severity rail — drawn as ::after on a row so it sits above the selected ::before */
+.apex-grid-row.sev-critical::after,
+.apex-grid-row.sev-high::after,
+.apex-grid-row.sev-medium::after,
+.apex-grid-row.sev-low::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  z-index: 1;
+}
+.apex-grid-row.sev-critical::after { background: var(--apex-error); box-shadow: 0 0 6px rgba(248,113,113,0.5); }
+.apex-grid-row.sev-high::after     { background: var(--apex-amber); }
+.apex-grid-row.sev-medium::after   { background: var(--apex-primary); opacity: 0.55; }
+.apex-grid-row.sev-low::after      { background: var(--apex-text-faint); opacity: 0.4; }
+.apex-grid-row.selected::after     { display: none; } /* selected blue rail wins */
+
+/* Age heat dot */
+.age-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.age-dot.fresh   { background: transparent; border: 1px solid rgba(255,255,255,0.12); }
+.age-dot.warm    { background: var(--apex-amber); }
+.age-dot.hot     { background: #f97316; }
+.age-dot.stale   { background: var(--apex-error); box-shadow: 0 0 6px rgba(248,113,113,0.6); }
+
+/* Snoozed visual — slightly muted */
+.apex-grid-row.snoozed { opacity: 0.55; }
+.apex-grid-row.snoozed:hover { opacity: 1; }
+
 /* ─────────────────────────────────────────────
    BUTTONS
    ───────────────────────────────────────────── */

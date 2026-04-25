@@ -16,6 +16,8 @@ export async function PATCH(
       dueDate?: string | null;
       priority?: string;
       description?: string | null;
+      notes?: string | null;
+      snoozedUntil?: string | null;
       note?: string;
     };
 
@@ -28,6 +30,8 @@ export async function PATCH(
     if (body.dueDate !== undefined) updates.dueDate = body.dueDate;
     if (body.priority !== undefined) updates.priority = body.priority;
     if (body.description !== undefined) updates.description = body.description;
+    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.snoozedUntil !== undefined) updates.snoozedUntil = body.snoozedUntil;
     if (body.status !== undefined) {
       updates.status = body.status;
       if (body.status === 'done') {
