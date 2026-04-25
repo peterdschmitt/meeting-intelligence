@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { actionItems } from '@/lib/schema';
+import { actionItems, statusHistory } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
 export async function PATCH(
@@ -16,7 +16,11 @@ export async function PATCH(
       dueDate?: string | null;
       priority?: string;
       description?: string | null;
+      note?: string;
     };
+
+    // Fetch current item to detect status change
+    const [current] = await db.select().from(actionItems).where(eq(actionItems.id, id));
 
     const updates: Record<string, unknown> = {};
     if (body.title !== undefined) updates.title = body.title;
@@ -40,6 +44,16 @@ export async function PATCH(
 
     if (!updated) {
       return NextResponse.json({ error: 'Action item not found' }, { status: 404 });
+    }
+
+    // Log status change to history if status changed
+    if (body.status !== undefined && current && current.status !== body.status) {
+      await db.insert(statusHistory).values({
+        actionItemId: id,
+        oldStatus: current.status,
+        newStatus: body.status,
+        note: body.note ?? null,
+      });
     }
 
     return NextResponse.json(updated);

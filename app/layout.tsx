@@ -28,8 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <Sidebar />
         <main
-          className="flex-1 overflow-y-auto custom-scrollbar"
-          style={{ background: '#050505' }}
+          className="flex-1"
+          style={{ background: '#0a0a0a', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         >
           {children}
         </main>

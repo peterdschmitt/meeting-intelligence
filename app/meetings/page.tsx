@@ -2,14 +2,14 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import DetailPanel from '@/components/DetailPanel';
+import ResizableSplit from '@/components/ResizableSplit';
 
 interface Meeting {
   id: string;
   title: string;
   meetingDate: string | null;
   participants: string[] | string | null;
-  aiSummary: string | null;
+  aiSummary?: string | null;
   companyName?: string | null;
   source?: string | null;
 }
@@ -68,26 +68,28 @@ function cycleStatus(current: string | null): string {
 
 export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Meeting | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [selectedActions, setSelectedActions] = useState<ActionItem[]>([]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/meetings').then((r) => r.ok ? r.json() : []),
-      fetch('/api/action-items').then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([m, a]) => {
-        setMeetings(Array.isArray(m) ? m as Meeting[] : []);
-        setActionItems(Array.isArray(a) ? a as ActionItem[] : []);
-      })
+    fetch('/api/meetings')
+      .then((r) => r.ok ? r.json() : [])
+      .then((m) => setMeetings(Array.isArray(m) ? m as Meeting[] : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Fetch action items when a meeting is selected
+  useEffect(() => {
+    if (!selected) { setSelectedActions([]); return; }
+    fetch(`/api/meetings/${selected.id}/action-items`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((a) => setSelectedActions(Array.isArray(a) ? a as ActionItem[] : []))
+      .catch(() => setSelectedActions([]));
+  }, [selected]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return meetings;
@@ -98,7 +100,6 @@ export default function MeetingsPage() {
     );
   }, [meetings, search]);
 
-  // Group by week
   const grouped = useMemo(() => {
     const groups: Map<string, Meeting[]> = new Map();
     for (const m of filtered) {
@@ -109,18 +110,22 @@ export default function MeetingsPage() {
     return Array.from(groups.entries());
   }, [filtered]);
 
+  // Action counts from all meetings (pre-load for display)
+  const [allActionItems, setAllActionItems] = useState<ActionItem[]>([]);
+  useEffect(() => {
+    fetch('/api/action-items')
+      .then((r) => r.ok ? r.json() : [])
+      .then((a) => setAllActionItems(Array.isArray(a) ? a as ActionItem[] : []))
+      .catch(() => {});
+  }, []);
+
   const actionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const a of actionItems) {
+    for (const a of allActionItems) {
       if (a.meetingId) counts[a.meetingId] = (counts[a.meetingId] ?? 0) + 1;
     }
     return counts;
-  }, [actionItems]);
-
-  const meetingActions = useMemo(() =>
-    selected ? actionItems.filter((a) => a.meetingId === selected.id) : [],
-    [actionItems, selected]
-  );
+  }, [allActionItems]);
 
   const stats = useMemo(() => ({
     total: meetings.length,
@@ -128,36 +133,9 @@ export default function MeetingsPage() {
     month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
   }), [meetings]);
 
-  const openPanel = (m: Meeting) => {
-    setSelected(m);
-    setEditTitle(m.title);
-    setPanelOpen(true);
-  };
-
-  const closePanel = () => {
-    setPanelOpen(false);
-    setSelected(null);
-  };
-
-  const handleSaveTitle = async () => {
-    if (!selected || editTitle === selected.title) return;
-    setSaving(true);
-    try {
-      await fetch(`/api/meetings/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: editTitle }),
-      });
-      setMeetings((prev) => prev.map((m) => m.id === selected.id ? { ...m, title: editTitle } : m));
-      setSelected((prev) => prev ? { ...prev, title: editTitle } : null);
-    } catch { /* ignore */ } finally {
-      setSaving(false);
-    }
-  };
-
   const handleCycleStatus = useCallback(async (item: ActionItem) => {
     const newStatus = cycleStatus(item.status);
-    setActionItems((prev) => prev.map((a) => a.id === item.id ? { ...a, status: newStatus } : a));
+    setSelectedActions((prev) => prev.map((a) => a.id === item.id ? { ...a, status: newStatus } : a));
     try {
       await fetch(`/api/action-items/${item.id}`, {
         method: 'PATCH',
@@ -165,33 +143,34 @@ export default function MeetingsPage() {
         body: JSON.stringify({ status: newStatus }),
       });
     } catch {
-      setActionItems((prev) => prev.map((a) => a.id === item.id ? { ...a, status: item.status } : a));
+      setSelectedActions((prev) => prev.map((a) => a.id === item.id ? { ...a, status: item.status } : a));
     }
   }, []);
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <div className="page-header">
-        <span className="page-title">Meetings</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+  const toggleCollapse = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const leftPane = (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
+      {/* Page header */}
+      <div className="page-header" style={{ background: '#0a0a0a' }}>
+        <span className="page-title">MEETINGS</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: '#e5e5e7',
-              fontSize: 11,
-              padding: '5px 10px',
-              outline: 'none',
-              width: 180,
-            }}
+            className="search-input"
           />
           <Link href="/import" style={{ textDecoration: 'none' }}>
-            <button className="action-btn amber">+ New</button>
+            <button className="action-btn amber">NEW</button>
           </Link>
         </div>
       </div>
@@ -200,7 +179,7 @@ export default function MeetingsPage() {
       <div className="stat-bar">
         <div className="stat-bar-item">
           <span className="stat-bar-value">{stats.total}</span>
-          <span className="stat-bar-label">Total Meetings</span>
+          <span className="stat-bar-label">Total</span>
         </div>
         <div className="stat-bar-item">
           <span className="stat-bar-value">{stats.week}</span>
@@ -212,14 +191,13 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      {/* Table header */}
-      <div className="table-header" style={{ gridTemplateColumns: '40px 1fr 120px 80px 60px 60px' }}>
-        <span>Date</span>
-        <span>Title</span>
-        <span>Company</span>
-        <span>People</span>
-        <span>Actions</span>
-        <span>Source</span>
+      {/* Grid header */}
+      <div className="grid-header" style={{ gridTemplateColumns: '70px 1fr 110px 50px 50px' }}>
+        <span>DATE</span>
+        <span>TITLE</span>
+        <span>COMPANY</span>
+        <span>PPL</span>
+        <span>ACT</span>
       </div>
 
       {/* Content */}
@@ -233,125 +211,158 @@ export default function MeetingsPage() {
         </div>
       ) : (
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {grouped.map(([weekLabel, weekMeetings]) => (
-            <div key={weekLabel}>
-              <div className="group-header">
-                <span>{weekLabel}</span>
-                <span>{weekMeetings.length} meeting{weekMeetings.length !== 1 ? 's' : ''}</span>
+          {grouped.map(([weekLabel, weekMeetings]) => {
+            const isCollapsed = collapsed.has(weekLabel);
+            return (
+              <div key={weekLabel}>
+                <div className="group-header" onClick={() => toggleCollapse(weekLabel)}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 8, color: '#52525b' }}>{isCollapsed ? '▶' : '▼'}</span>
+                    {weekLabel}
+                  </span>
+                  <span>{weekMeetings.length} meeting{weekMeetings.length !== 1 ? 's' : ''}</span>
+                </div>
+                {!isCollapsed && weekMeetings.map((m) => {
+                  const parts = parseParticipants(m.participants);
+                  const isSelected = selected?.id === m.id;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`grid-row${isSelected ? ' selected' : ''}`}
+                      style={{ gridTemplateColumns: '70px 1fr 110px 50px 50px' }}
+                      onClick={() => setSelected(isSelected ? null : m)}
+                    >
+                      <span className="cell-meta">{formatDate(m.meetingDate)}</span>
+                      <span className="cell-primary">{m.title}</span>
+                      <span className="cell-secondary">{m.companyName ?? '—'}</span>
+                      <span className="cell-meta" style={{ textAlign: 'center' }}>{parts.length || '—'}</span>
+                      <span className="cell-meta" style={{ textAlign: 'center' }}>
+                        {(actionCounts[m.id] ?? 0) > 0
+                          ? <span style={{ color: '#d97706' }}>{actionCounts[m.id]}</span>
+                          : '—'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-              {weekMeetings.map((m) => {
-                const parts = parseParticipants(m.participants);
-                const isSelected = selected?.id === m.id && panelOpen;
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const rightPane = selected ? (
+    <div className="detail-panel" style={{ background: '#111111' }}>
+      <div className="detail-panel-header">
+        <span className="detail-panel-title">{selected.title}</span>
+        <button
+          className="action-btn"
+          onClick={() => setSelected(null)}
+          style={{ flexShrink: 0, padding: '2px 8px' }}
+        >
+          ×
+        </button>
+      </div>
+      <div className="detail-panel-body">
+        {/* DATE */}
+        <div>
+          <div className="detail-section-label">DATE</div>
+          <div className="detail-section-value">{formatDate(selected.meetingDate)}</div>
+        </div>
+
+        {/* COMPANY */}
+        {selected.companyName && (
+          <div>
+            <div className="detail-section-label">COMPANY</div>
+            <div className="detail-section-value">{selected.companyName}</div>
+          </div>
+        )}
+
+        {/* SOURCE */}
+        {selected.source && (
+          <div>
+            <div className="detail-section-label">SOURCE</div>
+            <div className="detail-section-value">{selected.source}</div>
+          </div>
+        )}
+
+        {/* PARTICIPANTS */}
+        {parseParticipants(selected.participants).length > 0 && (
+          <div>
+            <div className="detail-section-label">PARTICIPANTS</div>
+            <div className="avatar-row" style={{ marginTop: 6 }}>
+              {parseParticipants(selected.participants).map((p, i) => (
+                <div key={i} className="avatar" title={p}>
+                  {p.slice(0, 2).toUpperCase()}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI SUMMARY */}
+        {selected.aiSummary && (
+          <div>
+            <div className="detail-section-label">AI SUMMARY</div>
+            <div className="detail-section-value" style={{ fontStyle: 'italic', lineHeight: 1.6 }}>
+              {selected.aiSummary}
+            </div>
+          </div>
+        )}
+
+        {/* ACTION ITEMS */}
+        <div>
+          <div className="detail-section-label">ACTION ITEMS ({selectedActions.length})</div>
+          {selectedActions.length === 0 ? (
+            <div className="cell-meta" style={{ marginTop: 4 }}>None</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 6 }}>
+              {selectedActions.map((a) => {
+                const status = a.status ?? 'open';
                 return (
                   <div
-                    key={m.id}
-                    className={`table-row${isSelected ? ' selected' : ''}`}
-                    style={{ gridTemplateColumns: '40px 1fr 120px 80px 60px 60px' }}
-                    onClick={() => openPanel(m)}
+                    key={a.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                   >
-                    <span className="cell-meta" style={{ fontSize: 9, fontFamily: 'var(--font-mono)' }}>
-                      {formatDate(m.meetingDate)}
+                    <span
+                      className={`badge badge-${status}`}
+                      onClick={() => handleCycleStatus(a)}
+                      style={{ flexShrink: 0 }}
+                    >
+                      {status}
                     </span>
-                    <span className="cell-primary">{m.title}</span>
-                    <span className="cell-secondary">{m.companyName ?? '—'}</span>
-                    <span className="cell-meta" style={{ textAlign: 'center' }}>{parts.length || '—'}</span>
-                    <span className="cell-meta" style={{ textAlign: 'center' }}>
-                      {(actionCounts[m.id] ?? 0) > 0
-                        ? <span style={{ color: '#d97706' }}>{actionCounts[m.id]}</span>
-                        : '—'}
-                    </span>
-                    <span className="cell-meta">{m.source ?? '—'}</span>
+                    <span className="cell-primary" style={{ flex: 1 }}>{a.title}</span>
+                    {a.assignee && <span className="cell-meta">{a.assignee}</span>}
                   </div>
                 );
               })}
             </div>
-          ))}
+          )}
         </div>
-      )}
 
-      {/* Detail Panel */}
-      <DetailPanel open={panelOpen} onClose={closePanel} title={selected?.title ?? ''}>
-        {selected && (
-          <>
-            <div>
-              <div className="detail-section-label">Title</div>
-              <input
-                className="inline-input"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                onBlur={handleSaveTitle}
-                style={{ marginTop: 4 }}
-              />
-            </div>
-            <div>
-              <div className="detail-section-label">Date</div>
-              <div className="detail-section-value">{formatDate(selected.meetingDate)}</div>
-            </div>
-            {selected.companyName && (
-              <div>
-                <div className="detail-section-label">Company</div>
-                <div className="detail-section-value">{selected.companyName}</div>
-              </div>
-            )}
-            {selected.source && (
-              <div>
-                <div className="detail-section-label">Source</div>
-                <div className="detail-section-value">{selected.source}</div>
-              </div>
-            )}
-            {parseParticipants(selected.participants).length > 0 && (
-              <div>
-                <div className="detail-section-label">Participants</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                  {parseParticipants(selected.participants).map((p, i) => (
-                    <div key={i} style={{
-                      padding: '2px 6px', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)',
-                      fontSize: 10, color: '#a1a1aa',
-                    }}>
-                      {p}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {selected.aiSummary && (
-              <div>
-                <div className="detail-section-label">AI Summary</div>
-                <div className="detail-section-value" style={{ color: '#a1a1aa', fontStyle: 'italic', lineHeight: 1.6 }}>
-                  {selected.aiSummary}
-                </div>
-              </div>
-            )}
-            <div>
-              <div className="detail-section-label">Action Items ({meetingActions.length})</div>
-              {meetingActions.length === 0 ? (
-                <div className="cell-meta" style={{ marginTop: 4 }}>None</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
-                  {meetingActions.map((a) => {
-                    const s = a.status ?? 'open';
-                    return (
-                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <span className={`badge-${s}`} onClick={() => handleCycleStatus(a)} style={{ flexShrink: 0 }}>{s}</span>
-                        <span className="cell-primary" style={{ flex: 1 }}>{a.title}</span>
-                        {a.assignee && <span className="cell-meta">{a.assignee}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
-              <button className="action-btn amber" onClick={handleSaveTitle} disabled={saving}>
-                {saving ? 'Saving…' : 'Save Title'}
-              </button>
-              <Link href={`/meetings/${selected.id}`} style={{ textDecoration: 'none' }}>
-                <button className="action-btn">Full Detail →</button>
-              </Link>
-            </div>
-          </>
-        )}
-      </DetailPanel>
+        {/* Full detail link */}
+        <div style={{ paddingTop: 4 }}>
+          <Link href={`/meetings/${selected.id}`} style={{ textDecoration: 'none' }}>
+            <button className="action-btn amber">Open Full Detail →</button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111111' }}>
+      <span className="cell-meta">← Select a meeting</span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
+      <ResizableSplit
+        left={leftPane}
+        right={rightPane}
+        defaultLeftPct={58}
+        storageKey="meetings-split"
+      />
     </div>
   );
 }

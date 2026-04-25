@@ -39,6 +39,7 @@ export const actionItems = pgTable('action_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   description: text('description'),
+  notes: text('notes'),
   assignee: text('assignee'),
   dueDate: date('due_date'),
   status: text('status').default('open'),
@@ -51,9 +52,31 @@ export const actionItems = pgTable('action_items', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+export const statusHistory = pgTable('status_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actionItemId: uuid('action_item_id').notNull().references(() => actionItems.id, { onDelete: 'cascade' }),
+  oldStatus: text('old_status'),
+  newStatus: text('new_status').notNull(),
+  note: text('note'),
+  changedBy: text('changed_by').default('Peter Schmitt'),
+  changedAt: timestamp('changed_at').defaultNow(),
+});
+
+export const outreachLog = pgTable('outreach_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actionItemId: uuid('action_item_id').notNull().references(() => actionItems.id, { onDelete: 'cascade' }),
+  assignee: text('assignee').notNull(),
+  messageSent: text('message_sent').notNull(),
+  sentAt: timestamp('sent_at').defaultNow(),
+  response: text('response'),
+  respondedAt: timestamp('responded_at'),
+});
+
 export type Company = typeof companies.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
 export type Meeting = typeof meetings.$inferSelect;
 export type ActionItem = typeof actionItems.$inferSelect;
+export type StatusHistory = typeof statusHistory.$inferSelect;
+export type OutreachLog = typeof outreachLog.$inferSelect;
 export type NewMeeting = typeof meetings.$inferInsert;
 export type NewActionItem = typeof actionItems.$inferInsert;
