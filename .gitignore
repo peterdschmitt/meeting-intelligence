@@ -51,3 +51,4 @@ next-env.d.ts
 
 # design references
 .design-ref/
+.env*.local
