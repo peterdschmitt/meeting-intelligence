@@ -355,47 +355,29 @@ export default function ActionDetailPane({ item, onClose, onPatch }: Props) {
 
         {/* Pills row */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Status pill */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`badge badge-${status}`}
-              onClick={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
-              style={{ cursor: 'pointer', height: 22, padding: '0 8px', fontSize: 10 }}
-            >
-              {status.replace('_', ' ')}
-              <span className="material-symbols-outlined" style={{ fontSize: 12, marginLeft: 2 }}>arrow_drop_down</span>
-            </button>
-            {openMenu === 'status' && (
-              <Popover>
-                {STATUSES.map((s) => (
-                  <PopoverItem key={s.value} onClick={() => setStatus(s.value)} active={s.value === status}>
-                    <span className={`badge badge-${s.value}`} style={{ fontSize: 9 }}>{s.label}</span>
-                  </PopoverItem>
-                ))}
-              </Popover>
-            )}
-          </div>
+          {/* Status — native dropdown (drives the confirm-with-note flow) */}
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className={`badge badge-${status}`}
+            title="Change status"
+          >
+            {STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
 
-          {/* Priority pill */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`badge priority-${priority}`}
-              onClick={() => setOpenMenu(openMenu === 'priority' ? null : 'priority')}
-              style={{ cursor: 'pointer', height: 22, padding: '0 8px', fontSize: 10 }}
-            >
-              {priority}
-              <span className="material-symbols-outlined" style={{ fontSize: 12, marginLeft: 2 }}>arrow_drop_down</span>
-            </button>
-            {openMenu === 'priority' && (
-              <Popover>
-                {PRIORITIES.map((p) => (
-                  <PopoverItem key={p} onClick={() => setPriority(p)} active={p === priority}>
-                    <span className={`badge priority-${p}`} style={{ fontSize: 9 }}>{p}</span>
-                  </PopoverItem>
-                ))}
-              </Popover>
-            )}
-          </div>
+          {/* Priority — native dropdown */}
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            className={`badge priority-${priority}`}
+            title="Change priority"
+          >
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>
+            ))}
+          </select>
 
           {/* Owner pill */}
           <div style={{ position: 'relative' }}>

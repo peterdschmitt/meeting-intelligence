@@ -133,12 +133,6 @@ function severityClass(priority: string | null | undefined): string {
   return 'sev-low';
 }
 
-function cycleStatus(s: string | null): string {
-  if (s === 'open') return 'in_progress';
-  if (s === 'in_progress') return 'done';
-  return 'open';
-}
-
 function initials(name: string | null | undefined): string {
   if (!name) return '·';
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
@@ -244,7 +238,6 @@ function ActionItemsInner() {
 
   // Inline / row menus
   const [snoozeMenuFor, setSnoozeMenuFor] = useState<string | null>(null);
-  const [priorityMenuFor, setPriorityMenuFor] = useState<string | null>(null);
   const [dueEditFor, setDueEditFor] = useState<string | null>(null);
   const dueInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -386,8 +379,8 @@ function ActionItemsInner() {
 
   const showOwnerCol = tab !== 'mine' && tab !== 'untriaged';
   const gridCols = showOwnerCol
-    ? '24px 64px 70px 110px 1fr 110px 70px 28px'
-    : '24px 64px 70px 1fr 110px 70px 28px';
+    ? '24px 100px 84px 110px 1fr 110px 70px 28px'
+    : '24px 100px 84px 1fr 110px 70px 28px';
 
   const visibleIds = useMemo(() => visible.map((v) => v.id), [visible]);
   const allSelected = selected.size > 0 && visibleIds.every((id) => selected.has(id));
@@ -468,20 +461,9 @@ function ActionItemsInner() {
     setReassignOpen(false);
   };
 
-  const handleCycle = useCallback((item: ActionItem, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const ns = cycleStatus(item.status);
-    patchItem(item.id, { status: ns });
-  }, [patchItem]);
-
   const handleSnooze = useCallback((id: string, date: string | null) => {
     patchItem(id, { snoozedUntil: date });
     setSnoozeMenuFor(null);
-  }, [patchItem]);
-
-  const handleSetPriority = useCallback((id: string, p: string) => {
-    patchItem(id, { priority: p });
-    setPriorityMenuFor(null);
   }, [patchItem]);
 
   const handleSetDue = useCallback((id: string, value: string | null) => {
@@ -493,7 +475,6 @@ function ActionItemsInner() {
 
   const closeAllMenus = () => {
     setSnoozeMenuFor(null);
-    setPriorityMenuFor(null);
     setBulkSnoozeOpen(false);
     setReassignOpen(false);
   };
@@ -642,45 +623,35 @@ function ActionItemsInner() {
                       >
                         <Checkbox checked={isChecked} onChange={() => toggleSelect(i.id)} />
                       </span>
-                      <span className={`badge badge-${status}`} onClick={(e) => handleCycle(i, e)} title="Click to cycle">{status.replace('_', ' ')}</span>
+                      {/* Status — native dropdown */}
+                      <select
+                        value={status}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); patchItem(i.id, { status: e.target.value }); }}
+                        className={`badge badge-${status}`}
+                        title="Change status"
+                      >
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                        <option value="blocked">Blocked</option>
+                        <option value="deferred">Deferred</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
 
-                      {/* Inline priority */}
-                      <span style={{ position: 'relative' }}>
-                        <button
-                          className={`badge priority-${priority}`}
-                          onClick={(e) => { e.stopPropagation(); setPriorityMenuFor(priorityMenuFor === i.id ? null : i.id); setSnoozeMenuFor(null); setDueEditFor(null); }}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to change priority"
-                        >
-                          {priority.slice(0, 4)}
-                        </button>
-                        {priorityMenuFor === i.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              position: 'absolute', left: 0, top: 24, zIndex: 100,
-                              background: 'var(--apex-elevated)',
-                              border: '1px solid var(--apex-border-bright)',
-                              borderRadius: 6,
-                              boxShadow: '0 12px 24px rgba(0,0,0,0.5)',
-                              padding: 4, minWidth: 100,
-                            }}
-                          >
-                            {PRIORITIES.map((p) => (
-                              <button
-                                key={p}
-                                onClick={() => handleSetPriority(i.id, p)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 8px', background: priority === p ? 'var(--apex-hover)' : 'transparent', border: 'none', color: 'var(--apex-text)', fontSize: 11, cursor: 'pointer', borderRadius: 4, textTransform: 'capitalize' }}
-                                onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'var(--apex-hover)'}
-                                onMouseLeave={(e) => { if (priority !== p) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                              >
-                                <span className={`badge priority-${p}`} style={{ fontSize: 9 }}>{p.slice(0, 4)}</span>
-                                <span>{p}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </span>
+                      {/* Priority — native dropdown */}
+                      <select
+                        value={priority}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); patchItem(i.id, { priority: e.target.value }); }}
+                        className={`badge priority-${priority}`}
+                        title="Change priority"
+                      >
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
 
                       {showOwnerCol && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -730,7 +701,7 @@ function ActionItemsInner() {
                           />
                         ) : (
                           <button
-                            onClick={(e) => { e.stopPropagation(); setDueEditFor(i.id); setSnoozeMenuFor(null); setPriorityMenuFor(null); }}
+                            onClick={(e) => { e.stopPropagation(); setDueEditFor(i.id); setSnoozeMenuFor(null); }}
                             className="mono"
                             style={{
                               background: 'transparent', border: '1px solid transparent',
@@ -751,7 +722,7 @@ function ActionItemsInner() {
                       <span style={{ position: 'relative' }}>
                         <button
                           className="btn-icon"
-                          onClick={(e) => { e.stopPropagation(); setSnoozeMenuFor(snoozeMenuFor === i.id ? null : i.id); setPriorityMenuFor(null); setDueEditFor(null); }}
+                          onClick={(e) => { e.stopPropagation(); setSnoozeMenuFor(snoozeMenuFor === i.id ? null : i.id); setDueEditFor(null); }}
                           title="Snooze"
                           aria-label="Snooze"
                           style={{ width: 22, height: 22 }}

@@ -332,6 +332,51 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .priority-high     { background: var(--apex-amber-soft); color: var(--apex-amber); border-color: rgba(245,158,11,0.3); }
 .priority-critical { background: var(--apex-error-soft); color: var(--apex-error); border-color: rgba(248,113,113,0.35); }
 
+/* <select> styled as a colored badge with visible chevron */
+select.badge {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  font-family: inherit;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23ffffff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none' opacity='0.7'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 8px 5px;
+  padding: 2px 16px 2px 6px;
+  cursor: pointer;
+  height: 22px;
+  outline: none;
+  text-overflow: ellipsis;
+}
+select.badge:focus { outline: 2px solid var(--apex-primary); outline-offset: 1px; }
+select.badge:hover { filter: brightness(1.15); }
+/* Native option dropdown still uses OS chrome — set readable colors */
+select.badge option {
+  background: var(--apex-elevated);
+  color: var(--apex-text);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  padding: 4px 8px;
+}
+
+/* inline-select with explicit chevron (used in bulk action bar) */
+select.inline-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 9px 6px;
+  padding-right: 24px;
+}
+select.inline-select option {
+  background: var(--apex-elevated);
+  color: var(--apex-text);
+}
+
 /* Severity rail — drawn as ::after on a row so it sits above the selected ::before */
 .apex-grid-row.sev-critical::after,
 .apex-grid-row.sev-high::after,
