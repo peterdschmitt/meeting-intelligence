@@ -74,7 +74,7 @@ export default function ResizableSplit({
   }, [minLeftPx, minRightPx, storageKey]);
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+    <div ref={containerRef} style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', minHeight: 0 }}>
       <div style={{ width: `${leftPct}%`, minWidth: minLeftPx, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, background: '#0a0a0a' }}>
         {left}
       </div>
