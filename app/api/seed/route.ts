@@ -2599,7 +2599,7 @@ export async function GET(request: NextRequest) {
         title: m.title,
         meetingDate: new Date(m.date + 'T09:00:00'),
         participants: m.participants || [],
-        aiSummary: m.summary || null,
+        executiveSummary: m.summary || null,
         source: 'gdrive',
         companyId: inferCompany(m.title),
       }).returning();

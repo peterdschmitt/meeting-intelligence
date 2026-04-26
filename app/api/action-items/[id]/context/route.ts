@@ -82,7 +82,7 @@ export async function GET(
           id: meetings.id,
           title: meetings.title,
           meetingDate: meetings.meetingDate,
-          aiSummary: meetings.aiSummary,
+          aiSummary: meetings.executiveSummary,
           transcript: meetings.transcript,
           platform: meetings.platform,
         })
