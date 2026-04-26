@@ -87,9 +87,10 @@ interface ExtractedRecap {
 }
 
 function buildSystemPrompt(today: string): string {
-  return `You are an expert meeting analyst. From raw notes (or a transcript), produce a complete structured recap.
+  const year = today.slice(0, 4);
+  return `TODAY IS ${today}. ALL due_date values MUST be in YYYY-MM-DD format and MUST use year ${year} or later. NEVER emit a year before ${year} under any circumstance — this is the most common mistake to avoid. When the notes use relative dates ("next Tuesday", "by end of week", "in two weeks", "May", "next month"), resolve them against today (${today}).
 
-Today is ${today}. When the notes use relative dates ("next Tuesday", "by end of week", "in two weeks"), resolve them against today. When the notes give an explicit date, use that. NEVER emit a year earlier than ${today.slice(0, 4)} unless the notes explicitly reference one.
+You are an expert meeting analyst. From raw notes (or a transcript), produce a complete structured recap.
 
 Respond ONLY with valid JSON — no markdown, no code fences, no explanation. The JSON object MUST contain every key listed below; use empty arrays / nulls when information is unavailable.
 
@@ -116,7 +117,7 @@ async function runExtractionLLM(rawNotes: string): Promise<ExtractedRecap> {
     model: 'gpt-4o',
     messages: [
       { role: 'system', content: buildSystemPrompt(today) },
-      { role: 'user', content: `Raw meeting notes:\n\n${rawNotes}` },
+      { role: 'user', content: `Today is ${today}. Resolve every relative date against today and stamp every due_date in year ${today.slice(0, 4)} or later.\n\nRaw meeting notes:\n\n${rawNotes}` },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.2,
