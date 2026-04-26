@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { actionItems, meetings } from '@/lib/schema';
+import { actionItems, meetings, contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
 interface TranscriptLine {
@@ -52,7 +52,29 @@ export async function GET(
           platform: string | null;
         }
       | null = null;
+    let contact:
+      | {
+          id: string;
+          fullName: string;
+          email: string | null;
+          role: string | null;
+        }
+      | null = null;
     let transcriptSnippet: TranscriptLine[] = [];
+
+    if (item.contactId) {
+      const [c] = await db
+        .select({
+          id: contacts.id,
+          fullName: contacts.fullName,
+          email: contacts.email,
+          role: contacts.role,
+        })
+        .from(contacts)
+        .where(eq(contacts.id, item.contactId))
+        .limit(1);
+      if (c) contact = c;
+    }
 
     if (item.meetingId) {
       const [m] = await db
@@ -104,7 +126,7 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ item, meeting, transcriptSnippet });
+    return NextResponse.json({ item, meeting, contact, transcriptSnippet });
   } catch (error) {
     console.error('[GET /api/action-items/[id]/context]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

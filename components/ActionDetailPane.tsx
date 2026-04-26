@@ -26,6 +26,13 @@ interface MeetingContext {
   platform: string | null;
 }
 
+interface ContactContext {
+  id: string;
+  fullName: string;
+  email: string | null;
+  role: string | null;
+}
+
 interface TranscriptLine {
   timestamp: string;
   speaker: string;
@@ -74,6 +81,20 @@ function initials(name: string | null | undefined): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
 }
 
+/**
+ * Loose match — true if any non-trivial token in `a` appears in `b` (or vice versa).
+ * "Larry" vs "Larry Anderson" → match. "Peter Schmitt" vs "Peter" → match.
+ * "Larry" vs "Peter Schmitt" → no match.
+ */
+function namesLooselyMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const tokens = (s: string) =>
+    s.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+  const at = tokens(a);
+  const bt = tokens(b);
+  return at.some((t) => bt.includes(t)) || bt.some((t) => at.includes(t));
+}
+
 function snoozeOptions(): { label: string; date: string }[] {
   const today = new Date();
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
@@ -99,6 +120,7 @@ interface Props {
 
 export default function ActionDetailPane({ item, onClose, onPatch }: Props) {
   const [meeting, setMeeting] = useState<MeetingContext | null>(null);
+  const [contact, setContact] = useState<ContactContext | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [outreach, setOutreach] = useState<OutreachEntry[]>([]);
@@ -147,9 +169,11 @@ export default function ActionDetailPane({ item, onClose, onPatch }: Props) {
       if (cancelled) return;
       if (ctx) {
         setMeeting(ctx.meeting ?? null);
+        setContact(ctx.contact ?? null);
         setTranscript(Array.isArray(ctx.transcriptSnippet) ? ctx.transcriptSnippet : []);
       } else {
         setMeeting(null);
+        setContact(null);
         setTranscript([]);
       }
       setHistory(Array.isArray(h) ? h : []);
@@ -602,6 +626,82 @@ export default function ActionDetailPane({ item, onClose, onPatch }: Props) {
             Follow-up
           </div>
 
+          {/* Recipient header — show who the email will actually go to */}
+          {(() => {
+            const recipientName = contact?.fullName ?? item.assignee ?? null;
+            const recipientFirst = recipientName?.split(/\s+/)[0] ?? 'recipient';
+            const hasContact = !!contact;
+            const hasEmail = !!contact?.email;
+            const namesMatch = !contact || !item.assignee || namesLooselyMatch(item.assignee, contact.fullName);
+
+            return (
+              <div
+                style={{
+                  background: hasEmail ? 'rgba(52,211,153,0.05)' : 'rgba(245,158,11,0.06)',
+                  border: `1px solid ${hasEmail ? 'rgba(52,211,153,0.25)' : 'rgba(245,158,11,0.3)'}`,
+                  borderRadius: 6,
+                  padding: '8px 10px',
+                  marginBottom: 8,
+                  fontSize: 11.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span
+                    className="label-caps"
+                    style={{ color: hasEmail ? 'var(--apex-emerald)' : 'var(--apex-amber)', fontSize: 9 }}
+                  >
+                    Will send to
+                  </span>
+                </div>
+                {hasContact ? (
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--apex-text)' }}>
+                      {contact.fullName}
+                    </span>
+                    {contact.email ? (
+                      <span className="mono" style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)' }}>
+                        &lt;{contact.email}&gt;
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--apex-amber)' }}>
+                        no email on file — add one in People
+                      </span>
+                    )}
+                    {contact.role && (
+                      <span style={{ fontSize: 11, color: 'var(--apex-text-muted)' }}>
+                        · {contact.role}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--apex-amber)' }}>
+                    No contact linked — link this action item to a person in People to enable sending.
+                  </div>
+                )}
+                {hasContact && !namesMatch && item.assignee && (
+                  <div style={{
+                    fontSize: 11,
+                    color: 'var(--apex-amber)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 4,
+                    marginTop: 2,
+                    paddingTop: 4,
+                    borderTop: '1px dashed rgba(245,158,11,0.2)',
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 13, marginTop: 1 }}>warning</span>
+                    <span>
+                      Heads up — the action item is assigned to <strong>{item.assignee}</strong> but the linked contact is <strong>{contact.fullName}</strong>. The email will go to {contact.fullName}, not {item.assignee.split(/\s+/)[0]}.
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {generatedMsg ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <textarea
@@ -613,9 +713,19 @@ export default function ActionDetailPane({ item, onClose, onPatch }: Props) {
               />
               <div style={{ display: 'flex', gap: 4 }}>
                 <button className="btn btn-ghost" onClick={() => setGeneratedMsg('')} style={{ flex: 1 }}>Discard</button>
-                <button className="btn btn-primary" onClick={sendOutreach} disabled={generating} style={{ flex: 2 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={sendOutreach}
+                  disabled={generating || !contact?.email}
+                  style={{ flex: 2 }}
+                  title={!contact?.email ? 'No email on file for the linked contact' : undefined}
+                >
                   <span className="material-symbols-outlined" style={{ fontSize: 14 }}>send</span>
-                  {generating ? 'Sending…' : 'Send to ' + (item.assignee?.split(' ')[0] ?? 'recipient')}
+                  {generating
+                    ? 'Sending…'
+                    : !contact?.email
+                    ? 'No recipient email'
+                    : `Send to ${(contact?.fullName ?? item.assignee ?? 'recipient').split(/\s+/)[0]}`}
                 </button>
               </div>
             </div>
