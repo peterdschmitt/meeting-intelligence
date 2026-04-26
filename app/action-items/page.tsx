@@ -251,6 +251,8 @@ function ActionItemsInner() {
   // Bulk select
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkSnoozeOpen, setBulkSnoozeOpen] = useState(false);
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkPriorityOpen, setBulkPriorityOpen] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
   const [reassignOpen, setReassignOpen] = useState(false);
 
@@ -425,6 +427,16 @@ function ActionItemsInner() {
   }, [selected]);
 
   const handleBulkDone = async () => { await bulkPatch({ status: 'done' }); clearSelection(); };
+  const handleBulkStatus = async (status: string) => {
+    await bulkPatch({ status });
+    setBulkStatusOpen(false);
+    clearSelection();
+  };
+  const handleBulkPriority = async (priority: string) => {
+    await bulkPatch({ priority });
+    setBulkPriorityOpen(false);
+    clearSelection();
+  };
   const handleBulkSnooze = async (date: string | null) => {
     await bulkPatch({ snoozedUntil: date });
     setBulkSnoozeOpen(false);
@@ -436,6 +448,12 @@ function ActionItemsInner() {
     setReassignTo('');
     setReassignOpen(false);
     clearSelection();
+  };
+  const closeBulkMenus = () => {
+    setBulkStatusOpen(false);
+    setBulkPriorityOpen(false);
+    setBulkSnoozeOpen(false);
+    setReassignOpen(false);
   };
 
   const handleCycle = useCallback((item: ActionItem, e: React.MouseEvent) => {
@@ -802,9 +820,93 @@ function ActionItemsInner() {
             Mark done
           </button>
 
+          {/* Bulk status */}
+          <div style={{ position: 'relative' }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => { closeBulkMenus(); setBulkStatusOpen(true); }}
+              style={{ height: 26, fontSize: 11.5 }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>flag</span>
+              Status
+              <span className="material-symbols-outlined" style={{ fontSize: 12 }}>arrow_drop_up</span>
+            </button>
+            {bulkStatusOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute', bottom: 32, left: 0, zIndex: 60,
+                  background: 'var(--apex-elevated)',
+                  border: '1px solid var(--apex-border-bright)',
+                  borderRadius: 6, boxShadow: '0 12px 24px rgba(0,0,0,0.5)',
+                  padding: 4, minWidth: 180,
+                }}
+              >
+                <p className="label-caps" style={{ padding: '4px 8px' }}>Set {selected.size} to…</p>
+                {[
+                  { value: 'open',         label: 'Open' },
+                  { value: 'in_progress',  label: 'In Progress' },
+                  { value: 'blocked',      label: 'Blocked' },
+                  { value: 'deferred',     label: 'Deferred' },
+                  { value: 'done',         label: 'Done' },
+                  { value: 'cancelled',    label: 'Cancelled' },
+                ].map((s) => (
+                  <button
+                    key={s.value}
+                    onClick={() => handleBulkStatus(s.value)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 8px', background: 'transparent', border: 'none', color: 'var(--apex-text)', fontSize: 12, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
+                    onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'var(--apex-hover)'}
+                    onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}
+                  >
+                    <span className={`badge badge-${s.value}`} style={{ fontSize: 9 }}>{s.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Bulk priority */}
+          <div style={{ position: 'relative' }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => { closeBulkMenus(); setBulkPriorityOpen(true); }}
+              style={{ height: 26, fontSize: 11.5 }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>priority_high</span>
+              Priority
+              <span className="material-symbols-outlined" style={{ fontSize: 12 }}>arrow_drop_up</span>
+            </button>
+            {bulkPriorityOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute', bottom: 32, left: 0, zIndex: 60,
+                  background: 'var(--apex-elevated)',
+                  border: '1px solid var(--apex-border-bright)',
+                  borderRadius: 6, boxShadow: '0 12px 24px rgba(0,0,0,0.5)',
+                  padding: 4, minWidth: 140,
+                }}
+              >
+                <p className="label-caps" style={{ padding: '4px 8px' }}>Priority for {selected.size}…</p>
+                {(['critical', 'high', 'medium', 'low'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => handleBulkPriority(p)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 8px', background: 'transparent', border: 'none', color: 'var(--apex-text)', fontSize: 12, cursor: 'pointer', borderRadius: 4, textAlign: 'left', textTransform: 'capitalize' }}
+                    onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'var(--apex-hover)'}
+                    onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}
+                  >
+                    <span className={`badge priority-${p}`} style={{ fontSize: 9 }}>{p.slice(0, 4)}</span>
+                    <span>{p}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Bulk snooze */}
           <div style={{ position: 'relative' }}>
-            <button className="btn btn-ghost" onClick={() => { setBulkSnoozeOpen(!bulkSnoozeOpen); setReassignOpen(false); }} style={{ height: 26, fontSize: 11.5 }}>
+            <button className="btn btn-ghost" onClick={() => { closeBulkMenus(); setBulkSnoozeOpen(true); }} style={{ height: 26, fontSize: 11.5 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 14 }}>schedule</span>
               Snooze
             </button>
@@ -838,7 +940,7 @@ function ActionItemsInner() {
 
           {/* Bulk reassign */}
           <div style={{ position: 'relative' }}>
-            <button className="btn btn-ghost" onClick={() => { setReassignOpen(!reassignOpen); setBulkSnoozeOpen(false); }} style={{ height: 26, fontSize: 11.5 }}>
+            <button className="btn btn-ghost" onClick={() => { closeBulkMenus(); setReassignOpen(true); }} style={{ height: 26, fontSize: 11.5 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 14 }}>person</span>
               Reassign
             </button>
