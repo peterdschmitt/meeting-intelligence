@@ -53,13 +53,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(rows);
   } catch (error) {
     console.error('[GET /api/action-items]', error);
-    const e = error as { message?: string; cause?: unknown; code?: string };
-    return NextResponse.json({
-      error: 'Internal server error',
-      message: e?.message,
-      cause: e?.cause,
-      code: e?.code,
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

@@ -14,20 +14,30 @@ const STATEMENTS = [
   `ALTER TABLE outreach_log ADD COLUMN IF NOT EXISTS email_sent BOOLEAN DEFAULT FALSE`,
   // action_items additions
   `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS snoozed_until DATE`,
+  `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS notes TEXT`,
+  `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS meeting_timestamp TEXT`,
+  // meetings additions
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS meeting_time TEXT`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS platform TEXT`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS transcript TEXT`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS chapters TEXT`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS key_questions TEXT[]`,
 ];
 
-export async function POST(request: NextRequest) {
+function authorize(request: NextRequest): NextResponse | null {
   const expected = process.env.SEED_TOKEN;
-  if (!expected) {
-    return NextResponse.json({ error: 'SEED_TOKEN not configured' }, { status: 503 });
-  }
+  if (!expected) return NextResponse.json({ error: 'SEED_TOKEN not configured' }, { status: 503 });
   const url = new URL(request.url);
   const provided =
     url.searchParams.get('token') ??
     request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-  if (provided !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (provided !== expected) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  return null;
+}
+
+export async function POST(request: NextRequest) {
+  const blocked = authorize(request);
+  if (blocked) return blocked;
 
   const results: { stmt: string; ok: boolean; error?: string }[] = [];
   for (const stmt of STATEMENTS) {
@@ -46,22 +56,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  // TEMPORARY ungated GET — runs the migration AND returns diagnostic info.
-  // Remove this once migration is confirmed.
-  try {
-    for (const stmt of STATEMENTS) {
-      try { await db.execute(sql.raw(stmt)); } catch (e) { console.error('stmt fail:', stmt, e); }
-    }
-    const u = process.env.DATABASE_URL ?? '';
-    const masked = u.replace(/(:\/\/)[^@]+(@)/, '$1***$2').slice(0, 80);
-    const cols = await db.execute(sql.raw(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = 'action_items' ORDER BY column_name`,
-    ));
-    return NextResponse.json({
-      databaseUrlPrefix: masked,
-      action_items_columns: (cols as unknown as { column_name: string }[]).map((c) => c.column_name),
-    });
-  } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
-  }
+  return POST(request);
 }
