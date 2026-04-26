@@ -19,6 +19,8 @@ export async function PATCH(
       notes?: string | null;
       snoozedUntil?: string | null;
       note?: string;
+      urgencyTier?: string;
+      ownerSide?: string | null;
     };
 
     // Fetch current item to detect status change
@@ -32,6 +34,18 @@ export async function PATCH(
     if (body.description !== undefined) updates.description = body.description;
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.snoozedUntil !== undefined) updates.snoozedUntil = body.snoozedUntil;
+    if (body.urgencyTier !== undefined) {
+      if (!['urgent', 'this_week', 'waiting_on', 'none'].includes(body.urgencyTier)) {
+        return NextResponse.json({ error: 'invalid urgencyTier' }, { status: 400 });
+      }
+      updates.urgencyTier = body.urgencyTier;
+    }
+    if (body.ownerSide !== undefined) {
+      if (body.ownerSide !== null && !['peter', 'external'].includes(body.ownerSide)) {
+        return NextResponse.json({ error: 'invalid ownerSide' }, { status: 400 });
+      }
+      updates.ownerSide = body.ownerSide;
+    }
     if (body.status !== undefined) {
       updates.status = body.status;
       if (body.status === 'done') {

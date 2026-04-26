@@ -5,11 +5,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const primaryNav = [
-  { href: '/',             icon: 'space_dashboard', label: 'Inbox' },
-  { href: '/meetings',     icon: 'event_note',      label: 'Meetings' },
-  { href: '/action-items', icon: 'checklist',       label: 'Action Items' },
-  { href: '/contacts',     icon: 'group',           label: 'People' },
-  { href: '/companies',    icon: 'business',        label: 'Companies' },
+  { href: '/',              icon: 'space_dashboard', label: 'Inbox' },
+  { href: '/meetings',      icon: 'event_note',      label: 'Meetings' },
+  { href: '/action-items',  icon: 'checklist',       label: 'Action Items' },
+  { href: '/decisions',     icon: 'gavel',           label: 'Decisions' },
+  { href: '/risks',         icon: 'warning',         label: 'Risks' },
+  { href: '/opportunities', icon: 'trending_up',     label: 'Opportunities' },
+  { href: '/contacts',      icon: 'group',           label: 'People' },
+  { href: '/companies',     icon: 'business',        label: 'Companies' },
 ];
 
 const secondaryNav = [

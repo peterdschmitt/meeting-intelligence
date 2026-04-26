@@ -1,46 +1,62 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import ResizableSplit from '@/components/ResizableSplit';
+import TocSidebar, { type TocEntry } from '@/components/recap/TocSidebar';
+import Section from '@/components/recap/Section';
+import BulletProse from '@/components/recap/BulletProse';
+import AttendeesSection from '@/components/recap/AttendeesSection';
+import TopicsSection from '@/components/recap/TopicsSection';
+import DecisionsSection from '@/components/recap/DecisionsSection';
+import ActionItemsSection from '@/components/recap/ActionItemsSection';
+import RisksSection from '@/components/recap/RisksSection';
+import OpportunitiesSection from '@/components/recap/OpportunitiesSection';
+import PrepSection from '@/components/recap/PrepSection';
+import EffectivenessSection from '@/components/recap/EffectivenessSection';
+import ReExtractDialog from '@/components/recap/ReExtractDialog';
+import type {
+  ActionItem,
+  Decision,
+  MeetingAttendee,
+  MeetingPrepItem,
+  MeetingTopic,
+  Opportunity,
+  Risk,
+} from '@/lib/schema';
 
-interface Chapter {
-  title: string;
-  timestamp: string;
-  bullets: string[];
-}
-
-interface ActionItem {
-  id: string;
-  title: string;
-  assignee: string | null;
-  status: string | null;
-  meetingTimestamp: string | null;
-}
-
-interface Meeting {
+interface MeetingDetail {
   id: string;
   title: string;
   meetingDate: string | null;
   meetingTime: string | null;
   platform: string | null;
-  participants: string[] | null;
-  aiSummary: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  rawNotes: string | null;
+  executiveSummary: string | null;
   transcript: string | null;
   chapters: string | null;
   keyQuestions: string[] | null;
-  companyName: string | null;
-  source: string | null;
+  durationMinutes: number | null;
+  productiveMinutes: number | null;
+  asyncableMinutes: number | null;
+  tangentMinutes: number | null;
+  improvementNote: string | null;
+  attendees: MeetingAttendee[];
+  topics: MeetingTopic[];
+  decisions: Decision[];
+  actionItems: ActionItem[];
+  risks: Risk[];
+  opportunities: Opportunity[];
+  prepItems: MeetingPrepItem[];
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(dateStr));
-}
+interface Chapter { title: string; timestamp: string; bullets: string[] }
 
-function initials(name: string): string {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
+function formatDate(s: string | null): string {
+  if (!s) return '—';
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(s));
 }
 
 function parseChapters(raw: string | null): Chapter[] {
@@ -51,89 +67,46 @@ function parseChapters(raw: string | null): Chapter[] {
   } catch { return []; }
 }
 
-function parseTranscript(raw: string): { timestamp: string; speaker: string; text: string }[] {
-  const lines = raw.split('\n').filter((l) => l.trim());
-  return lines.map((line) => {
-    const m = line.match(/^\((\d{2}:\d{2})\)\s+([^:]+?):\s+(.+)$/);
-    if (m) return { timestamp: m[1], speaker: m[2].trim(), text: m[3].trim() };
-    const m2 = line.match(/^\((\d{2}:\d{2})\)\s+(.+)$/);
-    if (m2) return { timestamp: m2[1], speaker: '', text: m2[2].trim() };
-    return { timestamp: '', speaker: '', text: line.trim() };
-  });
-}
-
-function cycleStatusValue(current: string | null): string {
-  if (current === 'open') return 'in_progress';
-  if (current === 'in_progress') return 'done';
-  return 'open';
-}
-
 export default function MeetingDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [meeting, setMeeting] = useState<MeetingDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeChapter, setActiveChapter] = useState<number>(-1);
-  const [highlightedTimestamp, setHighlightedTimestamp] = useState<string>('');
-  const [selectedAction, setSelectedAction] = useState<string>('');
-  const [addingAction, setAddingAction] = useState(false);
-  const [newActionText, setNewActionText] = useState('');
-  const [newActionAssignee, setNewActionAssignee] = useState('');
+  const [reExtractOpen, setReExtractOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
-  const transcriptRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    Promise.all([
-      fetch(`/api/meetings/${id}`).then((r) => r.ok ? r.json() : null),
-      fetch(`/api/meetings/${id}/action-items`).then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([m, a]) => {
-        setMeeting(m as Meeting | null);
-        setActionItems(Array.isArray(a) ? a as ActionItem[] : []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/meetings/${id}`);
+      if (!res.ok) { setMeeting(null); return; }
+      const data = await res.json() as MeetingDetail;
+      setMeeting(data);
+    } catch { setMeeting(null); }
   }, [id]);
 
-  const scrollTranscriptTo = useCallback((timestamp: string) => {
-    setHighlightedTimestamp(timestamp);
-    const el = transcriptRef.current?.querySelector(`[data-timestamp="${timestamp}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, []);
+  useEffect(() => {
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
-  const cycleStatus = useCallback(async (ai: ActionItem) => {
-    const newStatus = cycleStatusValue(ai.status);
-    setActionItems((prev) => prev.map((a) => a.id === ai.id ? { ...a, status: newStatus } : a));
+  const reExtract = async () => {
     try {
-      await fetch(`/api/action-items/${ai.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-    } catch {
-      setActionItems((prev) => prev.map((a) => a.id === ai.id ? { ...a, status: ai.status } : a));
-    }
-  }, []);
+      const res = await fetch(`/api/meetings/${id}/extract`, { method: 'POST' });
+      if (res.ok) { setReExtractOpen(false); await load(); }
+    } catch { /* keep dialog open */ }
+  };
 
-  const handleSaveNewAction = useCallback(async () => {
-    if (!newActionText.trim()) return;
+  const updateExecSummary = async (next: string) => {
+    if (!meeting) return;
+    setMeeting({ ...meeting, executiveSummary: next });
     try {
-      const res = await fetch('/api/action-items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newActionText, assignee: newActionAssignee || null, meetingId: id, status: 'open' }),
+      await fetch(`/api/meetings/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ executiveSummary: next }),
       });
-      if (res.ok) {
-        const created = await res.json() as ActionItem;
-        setActionItems((prev) => [...prev, created]);
-        setNewActionText('');
-        setNewActionAssignee('');
-        setAddingAction(false);
-      }
     } catch { /* ignore */ }
-  }, [newActionText, newActionAssignee, id]);
+  };
 
   if (loading) {
     return <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--apex-text-faint)' }}>Loading…</div>;
@@ -148,200 +121,25 @@ export default function MeetingDetailPage() {
   }
 
   const chapters = parseChapters(meeting.chapters);
-  const parsedTranscript = meeting.transcript ? parseTranscript(meeting.transcript) : [];
-  const participants = meeting.participants ?? [];
   const keyQuestions = meeting.keyQuestions ?? [];
+  const hasTranscriptOrChapters = !!meeting.transcript || chapters.length > 0 || keyQuestions.length > 0;
 
-  // LEFT — chapters + key questions (slim rail)
-  const leftPane = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)', minWidth: 0 }}>
-      <div className="apex-page-header">
-        <span className="apex-page-title">Chapters</span>
-        <span className="cell-meta">{chapters.length}</span>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {chapters.length === 0 ? (
-          <div style={{ padding: '20px 14px', fontSize: 11, color: 'var(--apex-text-faint)' }}>No chapters</div>
-        ) : (
-          chapters.map((ch, i) => (
-            <div
-              key={i}
-              className={`apex-grid-row${activeChapter === i ? ' selected' : ''}`}
-              style={{ gridTemplateColumns: '52px 1fr', minHeight: 32, padding: '6px 14px', alignItems: 'flex-start' }}
-              onClick={() => { setActiveChapter(i); scrollTranscriptTo(ch.timestamp); }}
-            >
-              <span className="cell-meta" style={{ fontSize: 10.5 }}>{ch.timestamp}</span>
-              <span style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)', whiteSpace: 'normal', lineHeight: 1.35 }}>{ch.title}</span>
-            </div>
-          ))
-        )}
-
-        {keyQuestions.length > 0 && (
-          <>
-            <div className="apex-group-header" style={{ marginTop: 8 }}>Key Questions</div>
-            {keyQuestions.map((q, i) => (
-              <div key={i} style={{ padding: '7px 14px', borderBottom: '1px solid var(--apex-border)', fontSize: 11.5, color: 'var(--apex-text-secondary)', lineHeight: 1.45 }}>
-                {q}
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    </div>
-  );
-
-  // CENTER — summary + transcript
-  const centerPane = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-panel)', borderLeft: '1px solid var(--apex-border)' }}>
-      {/* Summary */}
-      {meeting.aiSummary && (
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--apex-border)', background: 'rgba(46,98,255,0.04)', flexShrink: 0 }}>
-          <div className="detail-section-label" style={{ marginBottom: 4 }}>AI Summary</div>
-          <p style={{ fontSize: 12, color: 'var(--apex-text-secondary)', lineHeight: 1.55, maxHeight: 120, overflowY: 'auto' }}>
-            {meeting.aiSummary}
-          </p>
-        </div>
-      )}
-
-      <div className="apex-group-header" style={{ cursor: 'default' }}>
-        <span>Transcript</span>
-        <span>{parsedTranscript.length} lines</span>
-      </div>
-
-      <div ref={transcriptRef} style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
-        {parsedTranscript.length === 0 ? (
-          <div style={{ padding: '20px 0', fontSize: 11, color: 'var(--apex-text-faint)' }}>No transcript</div>
-        ) : (
-          parsedTranscript.map((line, i) => (
-            <div
-              key={i}
-              data-timestamp={line.timestamp || undefined}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '46px 96px 1fr',
-                gap: 8,
-                padding: '4px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.025)',
-                background: highlightedTimestamp && highlightedTimestamp === line.timestamp ? 'var(--apex-primary-soft)' : 'transparent',
-                transition: 'background 0.18s',
-              }}
-            >
-              <span className="cell-meta" style={{ fontSize: 10, paddingTop: 2 }}>{line.timestamp}</span>
-              <span style={{ fontSize: 10.5, color: 'var(--apex-primary-bright)', fontWeight: 600, paddingTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.speaker}</span>
-              <span style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)', lineHeight: 1.45 }}>{line.text}</span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-
-  // RIGHT — actions + participants
-  const rightPane = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)', borderLeft: '1px solid var(--apex-border)' }}>
-      <div className="apex-page-header">
-        <span className="apex-page-title">Actions ({actionItems.length})</span>
-        <button className="btn btn-ghost" style={{ height: 24, padding: '0 8px', fontSize: 11 }} onClick={() => setAddingAction(true)}>
-          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span>
-          Add
-        </button>
-      </div>
-
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '64px 1fr 70px' }}>
-        <span>Status</span><span>Task</span><span style={{ textAlign: 'right' }}>Owner</span>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {actionItems.length === 0 ? (
-          <div style={{ padding: '20px 14px', fontSize: 11, color: 'var(--apex-text-faint)' }}>No action items</div>
-        ) : (
-          actionItems.map((ai) => {
-            const status = ai.status ?? 'open';
-            return (
-              <div
-                key={ai.id}
-                className={`apex-grid-row${selectedAction === ai.id ? ' selected' : ''}`}
-                style={{ gridTemplateColumns: '64px 1fr 70px', minHeight: 30, padding: '5px 14px' }}
-                onClick={() => {
-                  setSelectedAction(ai.id);
-                  if (ai.meetingTimestamp) scrollTranscriptTo(ai.meetingTimestamp);
-                }}
-              >
-                <span
-                  className={`badge badge-${status}`}
-                  onClick={(e) => { e.stopPropagation(); cycleStatus(ai); }}
-                  title="Click to cycle status"
-                >
-                  {status.replace('_', ' ')}
-                </span>
-                <span className={status === 'done' ? 'cell-done' : 'cell-primary'} style={{ fontSize: 11.5 }}>{ai.title}</span>
-                <span className="cell-meta" style={{ fontSize: 10, textAlign: 'right' }}>{(ai.assignee ?? '').split(' ')[0]}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {addingAction && (
-        <div style={{ padding: 8, borderTop: '1px solid var(--apex-border)', display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-          <input
-            className="inline-input"
-            placeholder="Action item…"
-            value={newActionText}
-            onChange={(e) => setNewActionText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveNewAction()}
-            autoFocus
-          />
-          <div style={{ display: 'flex', gap: 4 }}>
-            <input
-              className="inline-input"
-              placeholder="Assignee"
-              value={newActionAssignee}
-              onChange={(e) => setNewActionAssignee(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSaveNewAction()}
-              style={{ flex: 1 }}
-            />
-            <button className="btn btn-primary" onClick={handleSaveNewAction}>Add</button>
-            <button className="btn btn-ghost" onClick={() => setAddingAction(false)}>×</button>
-          </div>
-        </div>
-      )}
-
-      {participants.length > 0 && (
-        <>
-          <div className="apex-group-header" style={{ cursor: 'default' }}>
-            <span>Participants</span>
-            <span>{participants.length}</span>
-          </div>
-          <div style={{ padding: 8, display: 'flex', flexWrap: 'wrap', gap: 4, flexShrink: 0 }}>
-            {participants.slice(0, 24).map((p, i) => (
-              <Link key={i} href={`/contacts?q=${encodeURIComponent(p)}`} title={p} style={{ display: 'inline-flex' }}>
-                <span className="avatar">{initials(p)}</span>
-              </Link>
-            ))}
-            {participants.length > 24 && <span className="avatar accent" title={`${participants.length - 24} more`}>+{participants.length - 24}</span>}
-          </div>
-        </>
-      )}
-    </div>
-  );
-
-  const centerRight = (
-    <ResizableSplit
-      left={centerPane}
-      right={rightPane}
-      defaultLeftPct={66}
-      minLeftPx={400}
-      minRightPx={280}
-      storageKey="meeting-detail-cr"
-    />
-  );
+  const tocEntries: TocEntry[] = [
+    { id: 'executive-summary', label: 'Executive Summary' },
+    { id: 'attendees',         label: 'Attendees', count: meeting.attendees.length },
+    { id: 'topics',            label: 'Topics', count: meeting.topics.length },
+    { id: 'decisions',         label: 'Decisions', count: meeting.decisions.length },
+    { id: 'action-items',      label: 'Action Items', count: meeting.actionItems.length },
+    { id: 'risks',             label: 'Risks', count: meeting.risks.length },
+    { id: 'opportunities',     label: 'Opportunities', count: meeting.opportunities.length },
+    { id: 'prep',              label: 'Next Meeting Prep', count: meeting.prepItems.length },
+    { id: 'effectiveness',     label: 'Effectiveness' },
+  ];
+  if (hasTranscriptOrChapters) tocEntries.push({ id: 'transcript', label: 'Transcript' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)' }}>
-      {/* Title + meta strip */}
-      <div className="apex-page-header">
+      <div className="apex-page-header" style={{ flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
           <Link href="/meetings" className="btn-icon" aria-label="Back" style={{ flexShrink: 0 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span>
@@ -352,36 +150,99 @@ export default function MeetingDetailPage() {
         </div>
         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           <button className="btn btn-ghost"><span className="material-symbols-outlined">share</span>Share</button>
-          <button className="btn btn-primary"><span className="material-symbols-outlined">auto_awesome</span>Re-summarize</button>
+          <button className="btn btn-primary" onClick={() => setReExtractOpen(true)}>
+            <span className="material-symbols-outlined">auto_awesome</span>Re-extract
+          </button>
         </div>
       </div>
 
-      <div className="apex-statbar">
+      <div className="apex-statbar" style={{ flexShrink: 0 }}>
         <div className="apex-stat"><span className="apex-stat-value mono" style={{ fontSize: 12 }}>{formatDate(meeting.meetingDate)}</span></div>
         {meeting.meetingTime && <div className="apex-stat"><span className="cell-meta">{meeting.meetingTime}</span></div>}
+        {meeting.durationMinutes !== null && <div className="apex-stat"><span className="cell-meta">{meeting.durationMinutes} min</span></div>}
         {meeting.platform && <div className="apex-stat"><span className="cell-meta">{meeting.platform}</span></div>}
         {meeting.companyName && <div className="apex-stat"><span className="cell-secondary" style={{ fontSize: 11.5 }}>{meeting.companyName}</span></div>}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-          {participants.slice(0, 8).map((p, i) => (
-            <span key={i} className="avatar" title={p}>{initials(p)}</span>
-          ))}
-          {participants.length > 8 && (
-            <span className="avatar accent">+{participants.length - 8}</span>
-          )}
-        </div>
       </div>
 
-      {/* 3-pane */}
-      <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-        <ResizableSplit
-          left={leftPane}
-          right={centerRight}
-          defaultLeftPct={20}
-          minLeftPx={180}
-          minRightPx={520}
-          storageKey="meeting-detail-lc"
-        />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <TocSidebar entries={tocEntries} />
+        <main style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+          <Section id="executive-summary" title="Executive Summary">
+            <BulletProse value={meeting.executiveSummary} onSave={updateExecSummary} placeholder="Click to add an executive summary…" />
+          </Section>
+
+          <AttendeesSection meetingId={meeting.id} initial={meeting.attendees} />
+          <TopicsSection meetingId={meeting.id} initial={meeting.topics} />
+          <DecisionsSection meetingId={meeting.id} initial={meeting.decisions} />
+          <ActionItemsSection meetingId={meeting.id} initial={meeting.actionItems} />
+          <RisksSection meetingId={meeting.id} initial={meeting.risks} />
+          <OpportunitiesSection meetingId={meeting.id} initial={meeting.opportunities} />
+          <PrepSection meetingId={meeting.id} initial={meeting.prepItems} />
+          <EffectivenessSection
+            meetingId={meeting.id}
+            initial={{
+              durationMinutes: meeting.durationMinutes,
+              productiveMinutes: meeting.productiveMinutes,
+              asyncableMinutes: meeting.asyncableMinutes,
+              tangentMinutes: meeting.tangentMinutes,
+              improvementNote: meeting.improvementNote,
+            }}
+          />
+
+          {hasTranscriptOrChapters && (
+            <Section
+              id="transcript" title="Transcript & Chapters"
+              actions={
+                <button className="btn btn-ghost" style={{ height: 24, padding: '0 8px', fontSize: 11 }} onClick={() => setTranscriptOpen((o) => !o)}>
+                  {transcriptOpen ? 'Hide' : 'Show'}
+                </button>
+              }
+            >
+              {transcriptOpen ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {chapters.length > 0 && (
+                    <div>
+                      <h4 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--apex-text-muted)', margin: '0 0 6px 0' }}>Chapters</h4>
+                      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {chapters.map((ch, i) => (
+                          <li key={i} style={{ display: 'grid', gridTemplateColumns: '52px 1fr', gap: 8, fontSize: 12 }}>
+                            <span className="cell-meta">{ch.timestamp}</span>
+                            <span style={{ color: 'var(--apex-text-secondary)' }}>{ch.title}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {keyQuestions.length > 0 && (
+                    <div>
+                      <h4 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--apex-text-muted)', margin: '0 0 6px 0' }}>Key Questions</h4>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--apex-text-secondary)' }}>
+                        {keyQuestions.map((q, i) => <li key={i}>{q}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {meeting.transcript && (
+                    <div>
+                      <h4 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--apex-text-muted)', margin: '0 0 6px 0' }}>Transcript</h4>
+                      <pre style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', margin: 0 }}>
+                        {meeting.transcript}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--apex-text-muted)', margin: 0 }}>Click &quot;Show&quot; to expand the raw transcript and chapters.</p>
+              )}
+            </Section>
+          )}
+        </main>
       </div>
+
+      <ReExtractDialog
+        open={reExtractOpen}
+        onCancel={() => setReExtractOpen(false)}
+        onConfirm={reExtract}
+      />
     </div>
   );
 }
