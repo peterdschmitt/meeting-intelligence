@@ -63,12 +63,9 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    const { actionItems, summary } = await extractAndSave(meeting.id, rawNotes);
+    await extractAndSave(meeting.id, rawNotes);
 
-    return NextResponse.json(
-      { meeting: { ...meeting, aiSummary: summary }, actionItems },
-      { status: 201 }
-    );
+    return NextResponse.json({ meetingId: meeting.id }, { status: 201 });
   } catch (error) {
     console.error('[POST /api/import/gdrive]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
