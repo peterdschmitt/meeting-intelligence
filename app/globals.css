@@ -475,6 +475,8 @@ input, select, textarea { font-family: inherit; color: inherit; }
   display: flex; flex-direction: column; height: 100%;
   background: var(--apex-panel);
   border-left: 1px solid var(--apex-border);
+  overflow: hidden;
+  min-height: 0;
 }
 .detail-pane-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -484,7 +486,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
   gap: 8px;
 }
 .detail-pane-body {
-  flex: 1; overflow-y: auto;
+  flex: 1 1 0; overflow-y: auto; min-height: 0;
   padding: 14px;
   display: flex; flex-direction: column; gap: 14px;
 }

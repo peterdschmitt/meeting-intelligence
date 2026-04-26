@@ -650,7 +650,7 @@ function ActionItemsInner() {
                       )}
                       <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }} title={[i.title, i.description, i.notes].filter(Boolean).join('\n\n— ')}>
                         <span className={ageDotClass(days)} />
-                        <span className={status === 'done' ? 'cell-done' : 'cell-primary'}>{display}</span>
+                        <span className={status === 'done' ? 'cell-done' : 'cell-primary'} style={{ fontSize: 11.5 }}>{display}</span>
                         {snoozed && i.snoozedUntil && (
                           <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--apex-text-faint)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 11 }}>snooze</span>
