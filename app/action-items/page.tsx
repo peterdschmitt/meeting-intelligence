@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
 import ActionDetailPane, { type ActionItemDetail } from '@/components/ActionDetailPane';
 import SortHeader from '@/components/SortHeader';
+import { importanceScore } from '@/lib/importance';
 
 interface ActionItem {
   id: string;
@@ -13,6 +14,8 @@ interface ActionItem {
   assignee: string | null;
   dueDate: string | null;
   priority: string | null;
+  urgencyTier: string | null;
+  ownerSide: string | null;
   meetingId: string | null;
   meetingTitle?: string | null;
   meetingTimestamp?: string | null;
@@ -31,7 +34,7 @@ const isMe = (assignee: string | null | undefined): boolean => {
 
 type Tab = 'today' | 'mine' | 'theirs' | 'untriaged' | 'snoozed' | 'done';
 type Group = 'urgency' | 'meeting' | 'owner' | 'priority' | 'status' | 'none';
-type SortKey = 'status' | 'priority' | 'owner' | 'task' | 'due' | null;
+type SortKey = 'status' | 'priority' | 'owner' | 'task' | 'due' | 'importance' | null;
 
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: 'today',     label: 'Today',         hint: 'Overdue + due today + just created' },
@@ -240,7 +243,7 @@ function ActionItemsInner() {
   });
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = useState<SortKey>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('importance');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Inline / row menus
@@ -349,12 +352,13 @@ function ActionItemsInner() {
     const sign = sortDir === 'asc' ? 1 : -1;
     const v = (item: ActionItem): number | string => {
       switch (sortKey) {
-        case 'status':   return STATUS_ORDER[item.status ?? 'open'] ?? 99;
-        case 'priority': return PRIORITY_ORDER[item.priority ?? 'medium'] ?? 99;
-        case 'owner':    return (item.assignee ?? '~~~').toLowerCase();
-        case 'task':     return displayTitle(item.title, item.assignee).toLowerCase();
-        case 'due':      return item.dueDate ? new Date(item.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-        default:         return '';
+        case 'status':     return STATUS_ORDER[item.status ?? 'open'] ?? 99;
+        case 'priority':   return PRIORITY_ORDER[item.priority ?? 'medium'] ?? 99;
+        case 'owner':      return (item.assignee ?? '~~~').toLowerCase();
+        case 'task':       return displayTitle(item.title, item.assignee).toLowerCase();
+        case 'due':        return item.dueDate ? new Date(item.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        case 'importance': return -importanceScore(item); // negate so default 'asc' sort puts most-important first
+        default:           return '';
       }
     };
     return [...visible].sort((a, b) => {

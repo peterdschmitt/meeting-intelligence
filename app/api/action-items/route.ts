@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
         doneToken: actionItems.doneToken,
         completedAt: actionItems.completedAt,
         snoozedUntil: actionItems.snoozedUntil,
+        urgencyTier: actionItems.urgencyTier,
+        ownerSide: actionItems.ownerSide,
         createdAt: actionItems.createdAt,
         updatedAt: actionItems.updatedAt,
         meetingTitle: meetings.title,

@@ -8,6 +8,7 @@ const primaryNav = [
   { href: '/',              icon: 'space_dashboard', label: 'Inbox' },
   { href: '/meetings',      icon: 'event_note',      label: 'Meetings' },
   { href: '/action-items',  icon: 'checklist',       label: 'Action Items' },
+  { href: '/follow-ups',    icon: 'reply_all',       label: 'Follow-ups' },
   { href: '/decisions',     icon: 'gavel',           label: 'Decisions' },
   { href: '/risks',         icon: 'warning',         label: 'Risks' },
   { href: '/opportunities', icon: 'trending_up',     label: 'Opportunities' },
