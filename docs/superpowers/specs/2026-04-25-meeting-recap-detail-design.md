@@ -212,6 +212,8 @@ Every section on the detail page is editable. Affordances by section:
 - **Action items:** existing UI on the detail page extended with `urgency_tier` and `owner_side` controls per row. Two view toggles: "By urgency" (default — groups by tier) and "By owner" (groups by Peter / external).
 - **Time breakdown:** three numeric inputs side-by-side; `duration_minutes` is editable independently from the breakdown total (they're allowed to disagree — the time-breakdown is approximate).
 
+**Bullet rendering for prose fields.** `executive_summary`, `meeting_topics.content`, and `improvement_note` are stored as plain text with newline-separated lines. The renderer splits on newlines and emits an `<ul><li>` per non-empty line. This is the only "markdown-like" affordance — no inline parsing of `*`, `**`, links, etc.
+
 PATCH endpoints follow the existing conventions in `app/api/`. Each table gets a thin `app/api/<resource>/[id]/route.ts` for `PATCH`/`DELETE`, and `app/api/meetings/[id]/<resource>/route.ts` for `POST` (create within a meeting).
 
 ## Detail page UI
@@ -260,6 +262,7 @@ The `participants` → `meeting_attendees` migration *does* run for all existing
 - Automatically converting risks or opportunities into action items (and vice versa).
 - Cross-meeting roll-ups beyond simple list pages (no dashboard, no charts).
 - Sharing / export of the recap as PDF or Markdown.
+- Tags / labels on meetings (the sample template's frontmatter `tags`). Out of scope for this design — meetings already have a `companyId`, which covers the most common grouping.
 
 ## Risks (in this design)
 
