@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/import-drive",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}
