@@ -4,15 +4,16 @@ import fs from 'fs';
 
 export async function GET(_request: NextRequest) {
   try {
+    const inlineJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
     const serviceAccountPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
-    if (!serviceAccountPath) {
+    if (!inlineJson && !serviceAccountPath) {
       return NextResponse.json(
-        { error: 'GOOGLE_SERVICE_ACCOUNT_PATH env var is not set' },
+        { error: 'GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_PATH env var must be set' },
         { status: 500 }
       );
     }
-
-    const serviceAccountKey = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf-8')) as {
+    const rawKey = inlineJson ?? fs.readFileSync(serviceAccountPath!, 'utf-8');
+    const serviceAccountKey = JSON.parse(rawKey) as {
       client_email: string;
       private_key: string;
     };
