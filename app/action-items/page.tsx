@@ -14,6 +14,7 @@ interface ActionItem {
   priority: string | null;
   meetingId: string | null;
   meetingTitle?: string | null;
+  meetingTimestamp?: string | null;
   description?: string | null;
   notes?: string | null;
   createdAt?: string | null;
@@ -256,6 +257,9 @@ function ActionItemsInner() {
   // Selected row (drives the detail pane on the right)
   const [selectedItem, setSelectedItem] = useState<ActionItem | null>(null);
 
+  // Hover preview (shows full task + description + notes on row hover)
+  const [hoverPreview, setHoverPreview] = useState<{ id: string; rect: DOMRect } | null>(null);
+
   useEffect(() => {
     if (typeof window !== 'undefined') localStorage.setItem('actions-group', group);
   }, [group]);
@@ -277,6 +281,14 @@ function ActionItemsInner() {
   useEffect(() => {
     if (dueEditFor && dueInputRef.current) dueInputRef.current.focus();
   }, [dueEditFor]);
+
+  // Clear hover preview on any scroll (the cached rect would otherwise drift)
+  useEffect(() => {
+    if (!hoverPreview) return;
+    const clear = () => setHoverPreview(null);
+    window.addEventListener('scroll', clear, true);
+    return () => window.removeEventListener('scroll', clear, true);
+  }, [hoverPreview]);
 
   const assignees = useMemo(() => {
     const s = new Set<string>();
@@ -648,7 +660,14 @@ function ActionItemsInner() {
                           <span className="cell-secondary" style={{ fontSize: 11 }}>{i.assignee?.split(' ')[0] ?? '—'}</span>
                         </span>
                       )}
-                      <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }} title={[i.title, i.description, i.notes].filter(Boolean).join('\n\n— ')}>
+                      <span
+                        style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}
+                        onMouseEnter={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setHoverPreview({ id: i.id, rect });
+                        }}
+                        onMouseLeave={() => setHoverPreview((h) => (h?.id === i.id ? null : h))}
+                      >
                         <span className={ageDotClass(days)} />
                         <span className={status === 'done' ? 'cell-done' : 'cell-primary'} style={{ fontSize: 11.5 }}>{display}</span>
                         {snoozed && i.snoozedUntil && (
@@ -875,6 +894,10 @@ function ActionItemsInner() {
     </div>
   );
 
+  // Floating hover preview — placed at the top level so it can escape
+  // the row's overflow / scroll container via position: fixed.
+  const previewItem = hoverPreview ? items.find((x) => x.id === hoverPreview.id) ?? null : null;
+
   return (
     <div
       style={{ height: '100%', overflow: 'hidden' }}
@@ -890,6 +913,143 @@ function ActionItemsInner() {
         minRightPx={360}
         storageKey="actions-split"
       />
+      {hoverPreview && previewItem && (
+        <HoverPreview rect={hoverPreview.rect} item={previewItem} />
+      )}
+    </div>
+  );
+}
+
+const PREVIEW_WIDTH = 520;
+const PREVIEW_MAX_HEIGHT = 480;
+
+function HoverPreview({ rect, item }: { rect: DOMRect; item: ActionItem }) {
+  // Decide above/below
+  const spaceBelow = (typeof window !== 'undefined' ? window.innerHeight : 800) - rect.bottom;
+  const placeAbove = spaceBelow < PREVIEW_MAX_HEIGHT && rect.top > spaceBelow;
+  const top = placeAbove
+    ? Math.max(8, rect.top - 6 - PREVIEW_MAX_HEIGHT)
+    : Math.min((typeof window !== 'undefined' ? window.innerHeight : 800) - 16 - PREVIEW_MAX_HEIGHT, rect.bottom + 6);
+
+  let left = rect.left + 24;
+  if (typeof window !== 'undefined' && left + PREVIEW_WIDTH > window.innerWidth - 16) {
+    left = Math.max(16, window.innerWidth - PREVIEW_WIDTH - 16);
+  }
+
+  const display = displayTitle(item.title, item.assignee);
+  const titleDiffers = display !== item.title;
+  const ageD = ageDays(item.createdAt);
+  const due = item.dueDate ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(item.dueDate)) : null;
+
+  return (
+    <div
+      role="tooltip"
+      style={{
+        position: 'fixed',
+        top, left,
+        zIndex: 1000,
+        width: PREVIEW_WIDTH,
+        maxWidth: '92vw',
+        maxHeight: PREVIEW_MAX_HEIGHT,
+        background: 'var(--apex-elevated)',
+        border: '1px solid var(--apex-border-bright)',
+        borderRadius: 8,
+        boxShadow: '0 24px 48px rgba(0,0,0,0.75)',
+        padding: '14px 16px',
+        pointerEvents: 'none',
+        overflowY: 'auto',
+        animation: 'apex-fade-in 120ms ease-out',
+      }}
+    >
+      {/* Status pills strip */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        <span className={`badge badge-${item.status ?? 'open'}`} style={{ fontSize: 10 }}>
+          {(item.status ?? 'open').replace('_', ' ')}
+        </span>
+        <span className={`badge priority-${item.priority ?? 'medium'}`} style={{ fontSize: 10 }}>
+          {(item.priority ?? 'medium')}
+        </span>
+        {item.assignee && (
+          <span className="badge" style={{ fontSize: 10, background: 'rgba(255,255,255,0.04)', borderColor: 'var(--apex-border)', color: 'var(--apex-text-secondary)' }}>
+            {item.assignee}
+          </span>
+        )}
+        {due && (
+          <span className="badge" style={{ fontSize: 10, background: 'rgba(255,255,255,0.04)', borderColor: 'var(--apex-border)', color: 'var(--apex-text-secondary)' }}>
+            Due {due}
+          </span>
+        )}
+      </div>
+
+      {/* Title — full text, larger font */}
+      <p style={{
+        fontSize: 14.5,
+        lineHeight: 1.45,
+        fontWeight: 600,
+        color: 'var(--apex-text)',
+        margin: 0,
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+      }}>
+        {display}
+      </p>
+
+      {titleDiffers && (
+        <p style={{
+          fontSize: 11.5,
+          fontStyle: 'italic',
+          color: 'var(--apex-text-faint)',
+          marginTop: 4,
+        }}>
+          From transcript: “{item.title}”
+        </p>
+      )}
+
+      {/* Description */}
+      {item.description && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--apex-text-muted)', marginTop: 14, marginBottom: 4 }}>
+            Description
+          </div>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--apex-text-secondary)', margin: 0, whiteSpace: 'pre-wrap' }}>
+            {item.description}
+          </p>
+        </>
+      )}
+
+      {/* Notes */}
+      {item.notes && item.notes !== item.description && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--apex-text-muted)', marginTop: 14, marginBottom: 4 }}>
+            Notes
+          </div>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--apex-text-secondary)', margin: 0, whiteSpace: 'pre-wrap' }}>
+            {item.notes}
+          </p>
+        </>
+      )}
+
+      {/* Footer: meta */}
+      <div style={{
+        marginTop: 14,
+        paddingTop: 10,
+        borderTop: '1px solid var(--apex-border)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 10,
+        fontSize: 11.5,
+        color: 'var(--apex-text-muted)',
+        flexWrap: 'wrap',
+      }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 13 }}>event_note</span>
+          {item.meetingTitle ?? 'No meeting'}
+          {item.meetingTimestamp && <span className="mono" style={{ marginLeft: 4, color: 'var(--apex-primary-bright)' }}>@{item.meetingTimestamp}</span>}
+        </span>
+        {ageD !== null && (
+          <span className="mono">{ageD}d open</span>
+        )}
+      </div>
     </div>
   );
 }

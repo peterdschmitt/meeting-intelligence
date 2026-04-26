@@ -340,6 +340,12 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .apex-grid-row.snoozed { opacity: 0.55; }
 .apex-grid-row.snoozed:hover { opacity: 1; }
 
+/* Hover preview tooltip fade-in */
+@keyframes apex-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ─────────────────────────────────────────────
    BUTTONS
    ───────────────────────────────────────────── */
