@@ -86,7 +86,10 @@ interface ExtractedRecap {
   effectiveness: ExtractedEffectiveness;
 }
 
-const SYSTEM_PROMPT = `You are an expert meeting analyst. From raw notes (or a transcript), produce a complete structured recap.
+function buildSystemPrompt(today: string): string {
+  return `You are an expert meeting analyst. From raw notes (or a transcript), produce a complete structured recap.
+
+Today is ${today}. When the notes use relative dates ("next Tuesday", "by end of week", "in two weeks"), resolve them against today. When the notes give an explicit date, use that. NEVER emit a year earlier than ${today.slice(0, 4)} unless the notes explicitly reference one.
 
 Respond ONLY with valid JSON — no markdown, no code fences, no explanation. The JSON object MUST contain every key listed below; use empty arrays / nulls when information is unavailable.
 
@@ -105,12 +108,14 @@ Keys:
 - "opportunities": array of { "opportunity", "next_step" (or null) }
 - "next_meeting_prep": { "agenda": [{ "text", "rationale" (or null) }], "questions": ["..."], "outcomes": ["..."] }
 - "effectiveness": { "duration_minutes" (or null), "productive_minutes" (or null), "asyncable_minutes" (or null), "tangent_minutes" (or null), "improvement_note" (or null) }`;
+}
 
 async function runExtractionLLM(rawNotes: string): Promise<ExtractedRecap> {
+  const today = new Date().toISOString().slice(0, 10);
   const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: buildSystemPrompt(today) },
       { role: 'user', content: `Raw meeting notes:\n\n${rawNotes}` },
     ],
     response_format: { type: 'json_object' },
