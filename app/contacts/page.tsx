@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
+import SortHeader from '@/components/SortHeader';
 
 interface Contact {
   id: string;
@@ -54,6 +55,8 @@ export default function ContactsPage() {
   );
 }
 
+type ContactSortKey = 'name' | 'company' | 'role' | 'mtgs' | 'last' | null;
+
 function ContactsInner() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -62,6 +65,8 @@ function ContactsInner() {
   const searchParams = useSearchParams();
   const search = searchParams?.get('q') ?? '';
   const [selected, setSelected] = useState<Contact | null>(null);
+  const [sortKey, setSortKey] = useState<ContactSortKey>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -119,6 +124,42 @@ function ContactsInner() {
     return ms.length > 0 ? formatDate(ms[0].meetingDate) : '—';
   }, [getMeetingsFor]);
 
+  const getLastSeenTime = useCallback((c: Contact): number => {
+    const ms = getMeetingsFor(c).filter((m) => m.meetingDate).sort((a, b) => new Date(b.meetingDate!).getTime() - new Date(a.meetingDate!).getTime());
+    return ms.length > 0 ? new Date(ms[0].meetingDate!).getTime() : 0;
+  }, [getMeetingsFor]);
+
+  const sortedContacts = useMemo(() => {
+    if (!sortKey) return filtered;
+    const sign = sortDir === 'asc' ? 1 : -1;
+    const v = (c: Contact): number | string => {
+      switch (sortKey) {
+        case 'name':    return c.fullName.toLowerCase();
+        case 'company': return (c.companyName ?? '~~~').toLowerCase();
+        case 'role':    return (c.role ?? '~~~').toLowerCase();
+        case 'mtgs':    return getMeetingsFor(c).length;
+        case 'last':    return getLastSeenTime(c);
+        default:        return '';
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const av = v(a), bv = v(b);
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
+  }, [filtered, sortKey, sortDir, getMeetingsFor, getLastSeenTime]);
+
+  const onSort = (key: NonNullable<ContactSortKey>) => {
+    if (sortKey === key) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortKey(null); setSortDir('asc'); }
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
   const selectedMeetings = selected ? getMeetingsFor(selected).filter((m) => m.meetingDate).sort((a, b) => new Date(b.meetingDate!).getTime() - new Date(a.meetingDate!).getTime()) : [];
   const selectedActions = selected ? getActionsFor(selected) : [];
 
@@ -137,20 +178,20 @@ function ContactsInner() {
 
       <div className="apex-grid-header" style={{ gridTemplateColumns: '32px 1fr 130px 130px 50px 80px' }}>
         <span></span>
-        <span>Name</span>
-        <span>Company</span>
-        <span>Role</span>
-        <span style={{ textAlign: 'right' }}>Mtgs</span>
-        <span style={{ textAlign: 'right' }}>Last</span>
+        <SortHeader label="Name"    k="name"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Company" k="company" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Role"    k="role"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Mtgs"    k="mtgs"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Last"    k="last"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {loading ? (
           <Empty msg="Loading…" />
-        ) : filtered.length === 0 ? (
+        ) : sortedContacts.length === 0 ? (
           <Empty msg="No contacts" />
         ) : (
-          filtered.map((c) => {
+          sortedContacts.map((c) => {
             const isSel = selected?.id === c.id;
             const mc = getMeetingsFor(c).length;
             return (

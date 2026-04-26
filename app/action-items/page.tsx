@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
 import ActionDetailPane, { type ActionItemDetail } from '@/components/ActionDetailPane';
+import SortHeader from '@/components/SortHeader';
 
 interface ActionItem {
   id: string;
@@ -30,6 +31,7 @@ const isMe = (assignee: string | null | undefined): boolean => {
 
 type Tab = 'today' | 'mine' | 'theirs' | 'untriaged' | 'snoozed' | 'done';
 type Group = 'urgency' | 'meeting' | 'owner' | 'priority' | 'status' | 'none';
+type SortKey = 'status' | 'priority' | 'owner' | 'task' | 'due' | null;
 
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: 'today',     label: 'Today',         hint: 'Overdue + due today + just created' },
@@ -51,6 +53,9 @@ const GROUPS: { key: Group; label: string }[] = [
 
 const PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+const STATUS_ORDER: Record<string, number> = {
+  blocked: 0, in_progress: 1, open: 2, deferred: 3, done: 4, cancelled: 5,
+};
 
 const URGENCY_KEYS = {
   ovr7:    'Overdue 7d+',
@@ -235,6 +240,8 @@ function ActionItemsInner() {
   });
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Inline / row menus
   const [snoozeMenuFor, setSnoozeMenuFor] = useState<string | null>(null);
@@ -337,8 +344,29 @@ function ActionItemsInner() {
     return r;
   }, [tabFiltered, assigneeFilter, search]);
 
+  const sortedVisible = useMemo(() => {
+    if (!sortKey) return visible;
+    const sign = sortDir === 'asc' ? 1 : -1;
+    const v = (item: ActionItem): number | string => {
+      switch (sortKey) {
+        case 'status':   return STATUS_ORDER[item.status ?? 'open'] ?? 99;
+        case 'priority': return PRIORITY_ORDER[item.priority ?? 'medium'] ?? 99;
+        case 'owner':    return (item.assignee ?? '~~~').toLowerCase();
+        case 'task':     return displayTitle(item.title, item.assignee).toLowerCase();
+        case 'due':      return item.dueDate ? new Date(item.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        default:         return '';
+      }
+    };
+    return [...visible].sort((a, b) => {
+      const av = v(a), bv = v(b);
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
+  }, [visible, sortKey, sortDir]);
+
   const grouped = useMemo(() => {
-    if (group === 'none') return [['', visible]] as [string, ActionItem[]][];
+    if (group === 'none') return [['', sortedVisible]] as [string, ActionItem[]][];
     const g = new Map<string, ActionItem[]>();
     for (const i of visible) {
       const key = groupKeyOf(i, group);
@@ -379,8 +407,20 @@ function ActionItemsInner() {
 
   const showOwnerCol = tab !== 'mine' && tab !== 'untriaged';
   const gridCols = showOwnerCol
-    ? '24px 100px 84px 110px 1fr 110px 70px 28px'
-    : '24px 100px 84px 1fr 110px 70px 28px';
+    ? '24px 100px 84px 110px 1fr 70px 28px'
+    : '24px 100px 84px 1fr 70px 28px';
+
+  // Sortable headers — click cycles asc → desc → off. Clicking forces a flat list.
+  const onSort = (key: SortKey) => {
+    if (sortKey === key) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortKey(null); setSortDir('asc'); }
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+      if (group !== 'none') setGroup('none');
+    }
+  };
 
   const visibleIds = useMemo(() => visible.map((v) => v.id), [visible]);
   const allSelected = selected.size > 0 && visibleIds.every((id) => selected.has(id));
@@ -560,12 +600,13 @@ function ActionItemsInner() {
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Checkbox checked={allSelected} onChange={toggleSelectAll} aria-label="Select all" />
         </span>
-        <span>Status</span>
-        <span>Pri</span>
-        {showOwnerCol && <span>Owner</span>}
-        <span>Task</span>
-        <span>Meeting</span>
-        <span style={{ textAlign: 'right' }}>Due</span>
+        <SortHeader label="Status"  k="status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Pri"     k="priority" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        {showOwnerCol && (
+          <SortHeader label="Owner" k="owner" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        )}
+        <SortHeader label="Task"    k="task"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Due"     k="due"      sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
         <span></span>
       </div>
 
@@ -678,8 +719,6 @@ function ActionItemsInner() {
                           </span>
                         )}
                       </span>
-                      <span className="cell-meta" style={{ fontSize: 10.5 }}>{i.meetingTitle ?? '—'}</span>
-
                       {/* Inline due edit */}
                       <span style={{ textAlign: 'right' }}>
                         {dueEditFor === i.id ? (

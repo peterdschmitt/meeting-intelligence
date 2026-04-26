@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import ResizableSplit from '@/components/ResizableSplit';
+import SortHeader from '@/components/SortHeader';
 
 interface Meeting {
   id: string;
@@ -68,10 +69,17 @@ function initials(name: string | null | undefined): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
 }
 
+type MtgSortKey = 'date' | 'title' | 'company' | 'ppl' | 'act' | null;
+type ActSortKey = 'status' | 'owner' | 'task' | 'due' | null;
+
 export default function DashboardClient() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [mtgSort, setMtgSort] = useState<MtgSortKey>(null);
+  const [mtgDir, setMtgDir] = useState<'asc' | 'desc'>('asc');
+  const [actSort, setActSort] = useState<ActSortKey>(null);
+  const [actDir, setActDir] = useState<'asc' | 'desc'>('asc');
   const [today] = useState(() =>
     new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())
   );
@@ -110,6 +118,63 @@ export default function DashboardClient() {
     return c;
   }, [actionItems]);
 
+  const sortedRecentMeetings = useMemo(() => {
+    if (!mtgSort) return recentMeetings;
+    const sign = mtgDir === 'asc' ? 1 : -1;
+    const v = (m: Meeting): number | string => {
+      switch (mtgSort) {
+        case 'date':    return m.meetingDate ? new Date(m.meetingDate).getTime() : 0;
+        case 'title':   return m.title.toLowerCase();
+        case 'company': return (m.companyName ?? '~~~').toLowerCase();
+        case 'ppl':     return Array.isArray(m.participants) ? m.participants.length : 0;
+        case 'act':     return actionCounts[m.id] ?? 0;
+        default:        return '';
+      }
+    };
+    return [...recentMeetings].sort((a, b) => {
+      const av = v(a), bv = v(b);
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
+  }, [recentMeetings, mtgSort, mtgDir, actionCounts]);
+
+  const sortedOpenActions = useMemo(() => {
+    if (!actSort) return openActions;
+    const sign = actDir === 'asc' ? 1 : -1;
+    const STATUS_ORDER: Record<string, number> = {
+      blocked: 0, in_progress: 1, open: 2, deferred: 3, done: 4, cancelled: 5,
+    };
+    const v = (a: ActionItem): number | string => {
+      switch (actSort) {
+        case 'status': return STATUS_ORDER[a.status ?? 'open'] ?? 99;
+        case 'owner':  return (a.assignee ?? '~~~').toLowerCase();
+        case 'task':   return a.title.toLowerCase();
+        case 'due':    return a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        default:       return '';
+      }
+    };
+    return [...openActions].sort((a, b) => {
+      const av = v(a), bv = v(b);
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
+  }, [openActions, actSort, actDir]);
+
+  const onMtgSort = (k: NonNullable<MtgSortKey>) => {
+    if (mtgSort === k) {
+      if (mtgDir === 'asc') setMtgDir('desc');
+      else { setMtgSort(null); setMtgDir('asc'); }
+    } else { setMtgSort(k); setMtgDir('asc'); }
+  };
+  const onActSort = (k: NonNullable<ActSortKey>) => {
+    if (actSort === k) {
+      if (actDir === 'asc') setActDir('desc');
+      else { setActSort(null); setActDir('asc'); }
+    } else { setActSort(k); setActDir('asc'); }
+  };
+
   const stats = useMemo(() => ({
     week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
     month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
@@ -142,18 +207,18 @@ export default function DashboardClient() {
       </div>
 
       <div className="apex-grid-header" style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}>
-        <span>Date</span>
-        <span>Title</span>
-        <span>Company</span>
-        <span style={{ textAlign: 'right' }}>Ppl</span>
-        <span style={{ textAlign: 'right' }}>Act</span>
+        <SortHeader label="Date"    k="date"    sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
+        <SortHeader label="Title"   k="title"   sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
+        <SortHeader label="Company" k="company" sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
+        <SortHeader label="Ppl"     k="ppl"     sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} align="right" />
+        <SortHeader label="Act"     k="act"     sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {recentMeetings.length === 0 ? (
+        {sortedRecentMeetings.length === 0 ? (
           <EmptyState message="No meetings yet" />
         ) : (
-          recentMeetings.map((m) => {
+          sortedRecentMeetings.map((m) => {
             const parts = Array.isArray(m.participants) ? m.participants : [];
             const ac = actionCounts[m.id] ?? 0;
             return (
@@ -187,17 +252,17 @@ export default function DashboardClient() {
       </div>
 
       <div className="apex-grid-header" style={{ gridTemplateColumns: '64px 90px 1fr 80px' }}>
-        <span>Status</span>
-        <span>Owner</span>
-        <span>Task</span>
-        <span style={{ textAlign: 'right' }}>Due</span>
+        <SortHeader label="Status" k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Owner"  k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Task"   k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Due"    k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {openActions.length === 0 ? (
+        {sortedOpenActions.length === 0 ? (
           <EmptyState message="No open actions" />
         ) : (
-          openActions.map((a) => {
+          sortedOpenActions.map((a) => {
             const status = a.status ?? 'open';
             const overdue = isOverdue(a.dueDate);
             return (

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
+import SortHeader from '@/components/SortHeader';
 
 interface Meeting {
   id: string;
@@ -78,6 +79,8 @@ export default function MeetingsPage() {
   );
 }
 
+type MeetingSortKey = 'date' | 'title' | 'company' | 'ppl' | 'act' | null;
+
 function MeetingsInner() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
@@ -87,6 +90,8 @@ function MeetingsInner() {
   const search = searchParams?.get('q') ?? '';
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<MeetingSortKey>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     Promise.all([
@@ -150,6 +155,38 @@ function MeetingsInner() {
     showing: filtered.length,
   }), [meetings, filtered]);
 
+  // When user picks a sort, return a flat list ordered by it (no week grouping).
+  const sortedFlat = useMemo(() => {
+    if (!sortKey) return null;
+    const sign = sortDir === 'asc' ? 1 : -1;
+    const v = (m: Meeting): number | string => {
+      switch (sortKey) {
+        case 'date':    return m.meetingDate ? new Date(m.meetingDate).getTime() : 0;
+        case 'title':   return m.title.toLowerCase();
+        case 'company': return (m.companyName ?? '~~~').toLowerCase();
+        case 'ppl':     return parseParticipants(m.participants).length;
+        case 'act':     return actionCounts[m.id] ?? 0;
+        default:        return '';
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const av = v(a), bv = v(b);
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
+  }, [filtered, sortKey, sortDir, actionCounts]);
+
+  const onSort = (key: NonNullable<MeetingSortKey>) => {
+    if (sortKey === key) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortKey(null); setSortDir('asc'); }
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
   const toggleCollapse = useCallback((key: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -177,20 +214,43 @@ function MeetingsInner() {
       </div>
 
       <div className="apex-grid-header" style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}>
-        <span>Date</span>
-        <span>Title</span>
-        <span>Company</span>
-        <span style={{ textAlign: 'right' }}>Ppl</span>
-        <span style={{ textAlign: 'right' }}>Act</span>
+        <SortHeader label="Date"    k="date"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Title"   k="title"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Company" k="company" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Ppl"     k="ppl"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Act"     k="act"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {loading ? (
-          <Empty msg="Loading…" />
-        ) : grouped.length === 0 ? (
-          <Empty msg="No meetings found" />
-        ) : (
-          grouped.map(([weekLabel, ms]) => {
+        {(() => {
+          const renderRow = (m: Meeting) => {
+            const parts = parseParticipants(m.participants);
+            const isSelected = selected?.id === m.id;
+            const ac = actionCounts[m.id] ?? 0;
+            return (
+              <div
+                key={m.id}
+                className={`apex-grid-row${isSelected ? ' selected' : ''}`}
+                style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}
+                onClick={() => setSelected(isSelected ? null : m)}
+              >
+                <span className="cell-meta">{formatDate(m.meetingDate)}</span>
+                <span className="cell-primary">{m.title}</span>
+                <span className="cell-secondary">{m.companyName ?? '—'}</span>
+                <span className="cell-meta" style={{ textAlign: 'right' }}>{parts.length || '—'}</span>
+                <span className="cell-meta" style={{ textAlign: 'right', color: ac > 0 ? 'var(--apex-primary-bright)' : undefined }}>
+                  {ac > 0 ? ac : '—'}
+                </span>
+              </div>
+            );
+          };
+          if (loading) return <Empty msg="Loading…" />;
+          if (sortedFlat) {
+            if (sortedFlat.length === 0) return <Empty msg="No meetings found" />;
+            return sortedFlat.map(renderRow);
+          }
+          if (grouped.length === 0) return <Empty msg="No meetings found" />;
+          return grouped.map(([weekLabel, ms]) => {
             const isCollapsed = collapsed.has(weekLabel);
             return (
               <div key={weekLabel}>
@@ -201,31 +261,11 @@ function MeetingsInner() {
                   </span>
                   <span>{ms.length} {ms.length === 1 ? 'meeting' : 'meetings'}</span>
                 </div>
-                {!isCollapsed && ms.map((m) => {
-                  const parts = parseParticipants(m.participants);
-                  const isSelected = selected?.id === m.id;
-                  const ac = actionCounts[m.id] ?? 0;
-                  return (
-                    <div
-                      key={m.id}
-                      className={`apex-grid-row${isSelected ? ' selected' : ''}`}
-                      style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}
-                      onClick={() => setSelected(isSelected ? null : m)}
-                    >
-                      <span className="cell-meta">{formatDate(m.meetingDate)}</span>
-                      <span className="cell-primary">{m.title}</span>
-                      <span className="cell-secondary">{m.companyName ?? '—'}</span>
-                      <span className="cell-meta" style={{ textAlign: 'right' }}>{parts.length || '—'}</span>
-                      <span className="cell-meta" style={{ textAlign: 'right', color: ac > 0 ? 'var(--apex-primary-bright)' : undefined }}>
-                        {ac > 0 ? ac : '—'}
-                      </span>
-                    </div>
-                  );
-                })}
+                {!isCollapsed && ms.map(renderRow)}
               </div>
             );
-          })
-        )}
+          });
+        })()}
       </div>
     </div>
   );
