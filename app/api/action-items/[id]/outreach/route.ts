@@ -3,12 +3,9 @@ import { db } from '@/lib/db';
 import { outreachLog, actionItems, meetings, contacts } from '@/lib/schema';
 import { eq, desc } from 'drizzle-orm';
 import { getOpenAI } from '@/lib/openai';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { sendMail, buildReplyTo, isMailConfigured } from '@/lib/mail';
 
-const execAsync = promisify(exec);
-
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const entries = await db
@@ -26,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const sendEmail = body.send === true; // only send if explicitly requested
+    const sendEmail = body.send === true; // only attempt SMTP send when explicitly requested
 
     // Fetch action item with meeting + contact info
     const rows = await db
@@ -40,6 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         meetingTitle: meetings.title,
         meetingDate: meetings.meetingDate,
         contactEmail: contacts.email,
+        contactName: contacts.fullName,
       })
       .from(actionItems)
       .leftJoin(meetings, eq(actionItems.meetingId, meetings.id))
@@ -52,8 +50,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const item = rows[0];
-    const assignee = item.assignee ?? 'the assignee';
-    const firstName = assignee.split(' ')[0];
+    const recipientName = item.contactName ?? item.assignee ?? 'the assignee';
+    const recipientFirst = recipientName.split(/\s+/)[0];
     const status = item.status ?? 'open';
     const meetingTitle = item.meetingTitle ?? 'a recent meeting';
     const meetingDate = item.meetingDate
@@ -67,7 +65,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 Begin every message with exactly this one line on its own:
 "I'm Sophia, Peter's virtual assistant — I'm following up on his behalf."
 
-Then write a brief, professional follow-up. Tone: warm but direct, like a trusted colleague checking in.
+Then write a brief, professional follow-up addressed to ${recipientFirst}. Tone: warm but direct, like a trusted colleague checking in.
 Keep it under 120 words total. No bullet points. Ask:
 1. What is the current status?
 2. Is there anything blocking progress?
@@ -75,7 +73,7 @@ Keep it under 120 words total. No bullet points. Ask:
 
 Sign off: "Best, Sophia — on behalf of Peter Schmitt, Pine Lake Capital"`;
 
-    const userPrompt = `Action item: "${item.title}" — assigned to ${assignee} in the "${meetingTitle}" meeting on ${meetingDate}. Current status: ${status}.${notes ? ' Context: ' + notes : ''}`;
+    const userPrompt = `Action item: "${item.title}" — owned by ${recipientName} in the "${meetingTitle}" meeting on ${meetingDate}. Current status: ${status}.${notes ? ' Context: ' + notes : ''}`;
 
     const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
@@ -88,36 +86,45 @@ Sign off: "Best, Sophia — on behalf of Peter Schmitt, Pine Lake Capital"`;
 
     const message = completion.choices[0]?.message?.content ?? '';
 
-    // Build a unique reply-tag for tracking
     const replyTag = `ai-${id.slice(0, 8)}`;
     const subject = `Follow-up: ${item.title.slice(0, 60)}`;
     const recipientEmail = item.contactEmail;
 
     let emailSent = false;
+    let sendError: string | null = null;
+    let note = '';
 
-    // Send email if we have an address and send=true
-    if (sendEmail && recipientEmail) {
-      const emailBody = `${message}\n\n---\nRef: ${replyTag} | Please reply to this email — Sophia monitors responses on Peter's behalf.`;
-
-      const mml = `From: Sophia Cranbrook <sophia.cranbrook@gmail.com>
-To: ${assignee} <${recipientEmail}>
-Subject: ${subject}
-Reply-To: sophia.cranbrook+${replyTag}@gmail.com
-
-${emailBody}`;
-
-      try {
-        await execAsync(`echo ${JSON.stringify(mml)} | himalaya template send`);
-        emailSent = true;
-      } catch (e: unknown) {
-        console.error('Email send failed:', String(e));
+    if (sendEmail) {
+      if (!recipientEmail) {
+        note = 'No email on file for the linked contact. Add one in the People page to enable sending.';
+      } else if (!isMailConfigured()) {
+        note = 'Outbound mail is not configured on the server. Set GMAIL_USER and GMAIL_APP_PASSWORD env vars.';
+        sendError = note;
+      } else {
+        const emailBody = `${message}\n\n---\nRef: ${replyTag} · please reply to this email — Sophia monitors responses on Peter's behalf.`;
+        const result = await sendMail({
+          to: `${recipientName} <${recipientEmail}>`,
+          subject,
+          text: emailBody,
+          replyTo: buildReplyTo(replyTag),
+        });
+        if (result.ok) {
+          emailSent = true;
+          note = `Email sent to ${recipientEmail}`;
+        } else {
+          sendError = result.error ?? 'Unknown send error';
+          note = `Send failed: ${sendError}`;
+        }
       }
+    } else if (!recipientEmail) {
+      note = 'No email on file for the linked contact. Add one in the People page to enable sending.';
+    } else {
+      note = 'Message generated. Click Send to deliver it.';
     }
 
-    // Log to outreach_log
     const [logEntry] = await db.insert(outreachLog).values({
       actionItemId: id,
-      assignee,
+      assignee: recipientName,
       messageSent: message,
       emailTo: recipientEmail ?? null,
       emailSubject: subject,
@@ -129,14 +136,10 @@ ${emailBody}`;
       logId: logEntry.id,
       emailSent,
       recipientEmail: recipientEmail ?? null,
+      recipientName,
       replyTag,
-      note: !recipientEmail
-        ? 'No email address on file for this contact. Add one in the People page to enable sending.'
-        : !sendEmail
-        ? 'Message generated. Click "Send Email" to deliver it.'
-        : emailSent
-        ? `Email sent to ${recipientEmail}`
-        : 'Email generation succeeded but sending failed.',
+      sendError,
+      note,
     });
   } catch (error: unknown) {
     console.error('[POST /api/action-items/[id]/outreach]', error);

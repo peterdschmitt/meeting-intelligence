@@ -54,6 +54,9 @@ interface OutreachEntry {
   messageSent: string;
   sentAt: string;
   responseReceived: string | null;
+  emailTo?: string | null;
+  emailSubject?: string | null;
+  emailSent?: boolean | null;
 }
 
 const PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
@@ -744,21 +747,52 @@ export default function ActionDetailPane({ item, onClose, onPatch }: Props) {
           {outreach.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
               <p className="label-caps" style={{ fontSize: 9 }}>Past outreach ({outreach.length})</p>
-              {outreach.map((o) => (
-                <div key={o.id} className="apex-panel-flat" style={{ padding: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--apex-text)' }}>To {o.assignee ?? '—'}</span>
-                    <span className="cell-meta" style={{ fontSize: 10 }}>{formatDate(o.sentAt)}</span>
-                  </div>
-                  <p style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{o.messageSent}</p>
-                  {o.responseReceived && (
-                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--apex-border)' }}>
-                      <div className="detail-section-label" style={{ marginBottom: 2 }}>Response</div>
-                      <p style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)' }}>{o.responseReceived}</p>
+              {outreach.map((o) => {
+                const sent = o.emailSent === true;
+                return (
+                  <div key={o.id} className="apex-panel-flat" style={{ padding: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 6 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--apex-text)' }}>
+                          To {o.assignee ?? '—'}
+                        </span>
+                        {o.emailTo && (
+                          <span className="mono" style={{ fontSize: 10, color: 'var(--apex-text-muted)' }}>
+                            {o.emailTo}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                        <span
+                          className="badge"
+                          style={{
+                            fontSize: 8.5,
+                            padding: '1px 5px',
+                            background: sent ? 'var(--apex-emerald-soft)' : 'rgba(245,158,11,0.12)',
+                            color: sent ? 'var(--apex-emerald)' : 'var(--apex-amber)',
+                            borderColor: sent ? 'rgba(52,211,153,0.3)' : 'rgba(245,158,11,0.3)',
+                          }}
+                        >
+                          {sent ? '✓ Sent' : 'Draft'}
+                        </span>
+                        <span className="cell-meta" style={{ fontSize: 10 }}>{formatDate(o.sentAt)}</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <p style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{o.messageSent}</p>
+                    {!sent && (
+                      <p style={{ fontSize: 10, color: 'var(--apex-text-muted)', fontStyle: 'italic', marginTop: 4 }}>
+                        Logged but never delivered.
+                      </p>
+                    )}
+                    {o.responseReceived && (
+                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--apex-border)' }}>
+                        <div className="detail-section-label" style={{ marginBottom: 2 }}>Response</div>
+                        <p style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)' }}>{o.responseReceived}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
