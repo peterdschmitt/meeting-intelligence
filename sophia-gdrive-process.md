@@ -10,6 +10,9 @@ pip install google-auth google-auth-httplib2 google-api-python-client
 
 Service account key at: `~/.hermes/credentials/google-drive-service-account.json`
 
+- **Service account email:** `sophia-drive@sophiareportsfromread.iam.gserviceaccount.com`
+- **GCP project:** `sophiareportsfromread`
+
 ---
 
 ## Auth + Service Setup
@@ -84,10 +87,17 @@ drive_svc = build_drive_service()
 text = export_doc_as_text(drive_svc, "YOUR_GDRIVE_FILE_ID")
 
 # Or list all docs in a folder
-files = list_folder_files(drive_svc, "YOUR_FOLDER_ID")
+files = list_folder_files(drive_svc, "1BTVZT0lw6c3HrdGlYIHnMa9GpDTpuHXP")
 for f in files:
     text = export_doc_as_text(drive_svc, f["id"])
 ```
+
+---
+
+## Drive Folder
+
+- **Meeting notes folder ID:** `1BTVZT0lw6c3HrdGlYIHnMa9GpDTpuHXP`
+- **Drive link:** https://drive.google.com/drive/folders/1BTVZT0lw6c3HrdGlYIHnMa9GpDTpuHXP
 
 ---
 
