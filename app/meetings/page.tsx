@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
 
 interface Meeting {
@@ -70,11 +71,20 @@ function initials(name: string): string {
 }
 
 export default function MeetingsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 32, fontSize: 12, color: 'var(--apex-text-faint)' }}>Loading…</div>}>
+      <MeetingsInner />
+    </Suspense>
+  );
+}
+
+function MeetingsInner() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [selectedActions, setSelectedActions] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const searchParams = useSearchParams();
+  const search = searchParams?.get('q') ?? '';
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -153,20 +163,10 @@ export default function MeetingsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)', minWidth: 0 }}>
       <div className="apex-page-header">
         <span className="apex-page-title">All Meetings</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="inline-input"
-            style={{ width: 200, height: 26 }}
-          />
-          <Link href="/import" className="btn btn-primary">
-            <span className="material-symbols-outlined">add</span>
-            Import
-          </Link>
-        </div>
+        <Link href="/import" className="btn btn-primary">
+          <span className="material-symbols-outlined">add</span>
+          Import
+        </Link>
       </div>
 
       <div className="apex-statbar">

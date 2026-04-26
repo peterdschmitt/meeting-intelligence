@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
 
 interface Contact {
@@ -46,11 +47,20 @@ function parseParticipants(raw: string[] | string | null): string[] {
 }
 
 export default function ContactsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 32, fontSize: 12, color: 'var(--apex-text-faint)' }}>Loading…</div>}>
+      <ContactsInner />
+    </Suspense>
+  );
+}
+
+function ContactsInner() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const searchParams = useSearchParams();
+  const search = searchParams?.get('q') ?? '';
   const [selected, setSelected] = useState<Contact | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -117,7 +127,6 @@ export default function ContactsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)', minWidth: 0 }}>
       <div className="apex-page-header">
         <span className="apex-page-title">People</span>
-        <input className="inline-input" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200, height: 26 }} />
       </div>
 
       <div className="apex-statbar">
