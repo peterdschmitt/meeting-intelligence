@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
+import ActionDetailPane, { type ActionItemDetail } from '@/components/ActionDetailPane';
 
 interface ActionItem {
   id: string;
@@ -17,22 +18,6 @@ interface ActionItem {
   notes?: string | null;
   createdAt?: string | null;
   snoozedUntil?: string | null;
-}
-
-interface HistoryEntry {
-  id: string;
-  oldStatus: string | null;
-  newStatus: string;
-  note: string | null;
-  changedAt: string;
-}
-
-interface OutreachEntry {
-  id: string;
-  assignee: string | null;
-  messageSent: string;
-  sentAt: string;
-  responseReceived: string | null;
 }
 
 const ME_PATTERNS = ['peter schmitt', 'peter', 'pschmitt', 'p. schmitt'];
@@ -268,24 +253,8 @@ function ActionItemsInner() {
   const [reassignTo, setReassignTo] = useState('');
   const [reassignOpen, setReassignOpen] = useState(false);
 
-  // Detail panel
+  // Selected row (drives the detail pane on the right)
   const [selectedItem, setSelectedItem] = useState<ActionItem | null>(null);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editAssignee, setEditAssignee] = useState('');
-  const [editStatus, setEditStatus] = useState('open');
-  const [editPriority, setEditPriority] = useState('medium');
-  const [originalStatus, setOriginalStatus] = useState('open');
-  const [statusNote, setStatusNote] = useState('');
-  const [editDue, setEditDue] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [applyingStatus, setApplyingStatus] = useState(false);
-
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [outreach, setOutreach] = useState<OutreachEntry[]>([]);
-  const [generatedMsg, setGeneratedMsg] = useState('');
-  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') localStorage.setItem('actions-group', group);
@@ -304,12 +273,6 @@ function ActionItemsInner() {
   }, []);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
-
-  useEffect(() => {
-    if (!selectedItem) { setHistory([]); setOutreach([]); setGeneratedMsg(''); return; }
-    fetch(`/api/action-items/${selectedItem.id}/history`).then((r) => r.ok ? r.json() : []).then((h) => setHistory(Array.isArray(h) ? h : [])).catch(() => setHistory([]));
-    fetch(`/api/action-items/${selectedItem.id}/outreach`).then((r) => r.ok ? r.json() : []).then((o) => setOutreach(Array.isArray(o) ? o : [])).catch(() => setOutreach([]));
-  }, [selectedItem]);
 
   useEffect(() => {
     if (dueEditFor && dueInputRef.current) dueInputRef.current.focus();
@@ -467,8 +430,7 @@ function ActionItemsInner() {
     e.stopPropagation();
     const ns = cycleStatus(item.status);
     patchItem(item.id, { status: ns });
-    if (selectedItem?.id === item.id) setEditStatus(ns);
-  }, [patchItem, selectedItem]);
+  }, [patchItem]);
 
   const handleSnooze = useCallback((id: string, date: string | null) => {
     patchItem(id, { snoozedUntil: date });
@@ -485,73 +447,7 @@ function ActionItemsInner() {
     setDueEditFor(null);
   }, [patchItem]);
 
-  const openDetail = (item: ActionItem) => {
-    setSelectedItem(item);
-    setEditingTitle(false);
-    setEditTitle(item.title);
-    setEditAssignee(item.assignee ?? '');
-    setEditStatus(item.status ?? 'open');
-    setEditPriority(item.priority ?? 'medium');
-    setOriginalStatus(item.status ?? 'open');
-    setStatusNote('');
-    setEditDue(item.dueDate ?? '');
-    setEditNotes(item.notes ?? item.description ?? '');
-    setGeneratedMsg('');
-  };
-
-  const handleApplyStatus = async () => {
-    if (!selectedItem) return;
-    setApplyingStatus(true);
-    try {
-      await fetch(`/api/action-items/${selectedItem.id}/history`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newStatus: editStatus, oldStatus: originalStatus, note: statusNote }),
-      });
-      setItems((prev) => prev.map((i) => i.id === selectedItem.id ? { ...i, status: editStatus } : i));
-      setSelectedItem((p) => p ? { ...p, status: editStatus } : null);
-      setOriginalStatus(editStatus);
-      setStatusNote('');
-      const h = await fetch(`/api/action-items/${selectedItem.id}/history`).then((r) => r.ok ? r.json() : []);
-      setHistory(Array.isArray(h) ? h : []);
-    } catch { /* ignore */ } finally { setApplyingStatus(false); }
-  };
-
-  const handleSave = async () => {
-    if (!selectedItem) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/action-items/${selectedItem.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editTitle,
-          assignee: editAssignee || null,
-          status: editStatus,
-          priority: editPriority,
-          dueDate: editDue || null,
-          notes: editNotes || null,
-        }),
-      });
-      if (res.ok) {
-        const u = await res.json() as ActionItem;
-        setItems((prev) => prev.map((i) => i.id === selectedItem.id ? { ...i, ...u } : i));
-        setSelectedItem((p) => p ? { ...p, ...u } : null);
-      }
-    } catch { /* ignore */ } finally { setSaving(false); }
-  };
-
-  const handleGenerate = async () => {
-    if (!selectedItem) return;
-    setGenerating(true); setGeneratedMsg('');
-    try {
-      const res = await fetch(`/api/action-items/${selectedItem.id}/outreach`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-      if (res.ok) {
-        const data = await res.json();
-        setGeneratedMsg(data.message ?? '');
-        const o = await fetch(`/api/action-items/${selectedItem.id}/outreach`).then((r) => r.ok ? r.json() : []);
-        setOutreach(Array.isArray(o) ? o : []);
-      }
-    } catch { /* ignore */ } finally { setGenerating(false); }
-  };
+  const openDetail = (item: ActionItem) => setSelectedItem(item);
 
   const closeAllMenus = () => {
     setSnoozeMenuFor(null);
@@ -752,8 +648,8 @@ function ActionItemsInner() {
                           <span className="cell-secondary" style={{ fontSize: 11 }}>{i.assignee?.split(' ')[0] ?? '—'}</span>
                         </span>
                       )}
-                      <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-                        <span className={ageDotClass(days)} title={days !== null ? `${days}d open` : ''} />
+                      <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }} title={[i.title, i.description, i.notes].filter(Boolean).join('\n\n— ')}>
+                        <span className={ageDotClass(days)} />
                         <span className={status === 'done' ? 'cell-done' : 'cell-primary'}>{display}</span>
                         {snoozed && i.snoozedUntil && (
                           <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--apex-text-faint)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -967,191 +863,15 @@ function ActionItemsInner() {
   );
 
   // ── Right pane (detail) ────────────────────────────
-  const rightPane = selectedItem ? (() => {
-    const display = displayTitle(selectedItem.title, selectedItem.assignee);
-    const fullDiffers = display !== selectedItem.title;
-    return (
-      <div className="detail-pane">
-        <div className="detail-pane-header">
-          {editingTitle ? (
-            <input
-              className="inline-input"
-              value={editTitle}
-              autoFocus
-              onChange={(e) => setEditTitle(e.target.value)}
-              onBlur={() => { if (editTitle !== selectedItem.title) patchItem(selectedItem.id, { title: editTitle }); setEditingTitle(false); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); if (e.key === 'Escape') { setEditTitle(selectedItem.title); setEditingTitle(false); } }}
-              style={{ flex: 1, height: 28 }}
-            />
-          ) : (
-            <button
-              onClick={() => setEditingTitle(true)}
-              title="Click to rename"
-              style={{
-                flex: 1, minWidth: 0, textAlign: 'left',
-                background: 'transparent', border: 'none', cursor: 'text',
-                fontSize: 13, fontWeight: 600, color: 'var(--apex-text)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                padding: '4px 6px', marginLeft: -6, borderRadius: 4,
-              }}
-              onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'var(--apex-hover)'}
-              onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}
-            >
-              {display}
-            </button>
-          )}
-          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            <button className="btn btn-ghost" onClick={() => setSnoozeMenuFor(snoozeMenuFor === selectedItem.id ? null : selectedItem.id)} style={{ height: 24, padding: '0 8px', fontSize: 11 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>schedule</span>
-              {selectedItem.snoozedUntil ? `until ${formatDate(selectedItem.snoozedUntil)}` : 'Snooze'}
-            </button>
-            <button className="btn-icon" onClick={() => setSelectedItem(null)} aria-label="Close">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="detail-pane-body">
-          {fullDiffers && (
-            <p style={{ fontSize: 10.5, color: 'var(--apex-text-faint)', fontStyle: 'italic', margin: 0, paddingBottom: 4, borderBottom: '1px solid var(--apex-border)' }}>
-              From transcript: “{selectedItem.title}”
-            </p>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Status">
-              <select className="inline-select" value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
-                <option value="open">Open</option>
-                <option value="in_progress">In Progress</option>
-                <option value="done">Done</option>
-                <option value="blocked">Blocked</option>
-                <option value="deferred">Deferred</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </Field>
-            <Field label="Priority">
-              <select className="inline-select" value={editPriority} onChange={(e) => setEditPriority(e.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </Field>
-            <Field label="Owner">
-              <input className="inline-input" value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} placeholder="Unassigned" />
-            </Field>
-            <Field label="Due Date">
-              <input type="date" className="inline-input" value={editDue} onChange={(e) => setEditDue(e.target.value)} style={{ colorScheme: 'dark' }} />
-            </Field>
-          </div>
-
-          {selectedItem.snoozedUntil && (
-            <div style={{ padding: '6px 10px', background: 'var(--apex-violet-soft)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--apex-violet)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>snooze</span>
-                Snoozed until {formatDate(selectedItem.snoozedUntil)}
-              </span>
-              <button onClick={() => handleSnooze(selectedItem.id, null)} className="btn btn-ghost" style={{ height: 22, padding: '0 8px', fontSize: 10.5 }}>Wake</button>
-            </div>
-          )}
-
-          {editStatus !== originalStatus && (
-            <>
-              <Field label="Note on Change">
-                <textarea className="inline-input inline-textarea" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} rows={2} placeholder="Why is this changing?" />
-              </Field>
-              <button className="btn btn-primary" onClick={handleApplyStatus} disabled={applyingStatus}>
-                {applyingStatus ? 'Applying…' : 'Apply Status'}
-              </button>
-            </>
-          )}
-
-          {selectedItem.meetingTitle && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--apex-text-secondary)' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--apex-text-muted)' }}>event_note</span>
-              {selectedItem.meetingTitle}
-            </div>
-          )}
-
-          <Field label="Notes">
-            <textarea className="inline-input inline-textarea" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} placeholder="Add notes…" />
-          </Field>
-
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ width: '100%' }}>
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-
-          {history.length > 0 && (
-            <>
-              <div className="divider" />
-              <div>
-                <div className="detail-section-label">Status History ({history.length})</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                  {history.map((h) => (
-                    <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: '1px solid var(--apex-border)' }}>
-                      <span className="cell-meta" style={{ minWidth: 56, fontSize: 10 }}>{formatDate(h.changedAt)}</span>
-                      <span className={`badge badge-${h.oldStatus ?? 'open'}`}>{h.oldStatus ?? '—'}</span>
-                      <span className="material-symbols-outlined" style={{ fontSize: 12, color: 'var(--apex-text-faint)' }}>arrow_forward</span>
-                      <span className={`badge badge-${h.newStatus}`}>{h.newStatus}</span>
-                      {h.note && <span style={{ flex: 1, fontSize: 11, color: 'var(--apex-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{h.note}”</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {(outreach.length > 0 || generatedMsg) && (
-            <>
-              <div className="divider" />
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <div className="detail-section-label" style={{ marginBottom: 0 }}>AI Outreach ({outreach.length})</div>
-                  <button className="btn btn-ghost" onClick={handleGenerate} disabled={generating} style={{ height: 22, padding: '0 8px', fontSize: 10.5 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 12 }}>auto_awesome</span>
-                    {generating ? 'Generating…' : 'Generate'}
-                  </button>
-                </div>
-
-                {generatedMsg && (
-                  <div style={{ marginBottom: 6 }}>
-                    <textarea className="inline-input inline-textarea" value={generatedMsg} onChange={(e) => setGeneratedMsg(e.target.value)} rows={5} />
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {outreach.map((o) => (
-                    <div key={o.id} className="apex-panel-flat" style={{ padding: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--apex-text)' }}>{o.assignee ?? '—'}</span>
-                        <span className="cell-meta" style={{ fontSize: 10 }}>{formatDate(o.sentAt)}</span>
-                      </div>
-                      <p style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{o.messageSent}</p>
-                      {o.responseReceived && (
-                        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--apex-border)' }}>
-                          <div className="detail-section-label" style={{ marginBottom: 2 }}>Response</div>
-                          <p style={{ fontSize: 11.5, color: 'var(--apex-text-secondary)' }}>{o.responseReceived}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {outreach.length === 0 && !generatedMsg && (
-            <button className="btn btn-ghost" onClick={handleGenerate} disabled={generating} style={{ width: '100%' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
-              {generating ? 'Generating…' : 'Generate AI follow-up'}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  })() : (
+  const rightPane = selectedItem ? (
+    <ActionDetailPane
+      item={selectedItem as ActionItemDetail}
+      onClose={() => setSelectedItem(null)}
+      onPatch={async (id, body) => { await patchItem(id, body as Partial<ActionItem>); }}
+    />
+  ) : (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--apex-panel)', borderLeft: '1px solid var(--apex-border)' }}>
-      <span style={{ fontSize: 11, color: 'var(--apex-text-faint)' }}>Select an action to edit</span>
+      <span style={{ fontSize: 11, color: 'var(--apex-text-faint)' }}>Select an action to view its context</span>
     </div>
   );
 
