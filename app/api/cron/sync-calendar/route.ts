@@ -9,6 +9,11 @@ import { generatePrep } from '@/lib/generate-prep';
 // Each prep guide LLM call takes ~5-15s; with up to ~10 meetings/day this
 // can approach 60s. Use the same maxDuration as import-drive.
 export const maxDuration = 300;
+// node-ical (and its rrule/date deps) use BigInt + dynamic require patterns that
+// fail Turbopack's build-time page-data collection. Force Node.js runtime + dynamic
+// rendering so the module is only loaded at request time.
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 function authorize(request: NextRequest): NextResponse | null {
   const expected = process.env.CRON_SECRET;

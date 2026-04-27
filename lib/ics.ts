@@ -1,4 +1,8 @@
-import ical from 'node-ical';
+// node-ical pulls in deps that crash Turbopack's build-time module evaluation
+// (`s.BigInt is not a function`). Lazy-import it inside the function so the
+// route module can be safely loaded at build time without evaluating ical.
+import type * as IcalNS from 'node-ical';
+type Ical = typeof IcalNS;
 
 export interface ParsedIcsEvent {
   uid: string;
@@ -51,7 +55,7 @@ function isSameDayInTimezone(a: Date, b: Date, timeZone: string): boolean {
 }
 
 /** Extract the plain string from a node-ical ParameterValue (string | { val: string }) */
-function pv(value: ical.ParameterValue | undefined): string {
+function pv(value: IcalNS.ParameterValue | undefined): string {
   if (!value) return '';
   if (typeof value === 'string') return value;
   if (typeof value === 'object' && 'val' in value) return String(value.val ?? '');
@@ -70,7 +74,8 @@ export async function fetchIcsForDay(
   todayInTz: Date = new Date(),
   timeZone = 'America/New_York',
 ): Promise<ParsedIcsEvent[]> {
-  let parsed: ical.CalendarResponse;
+  const ical: Ical = (await import('node-ical')).default ?? (await import('node-ical'));
+  let parsed: IcalNS.CalendarResponse;
   try {
     parsed = await ical.async.fromURL(feedUrl);
   } catch (err) {
