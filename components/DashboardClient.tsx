@@ -31,7 +31,11 @@ interface Contact {
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
+  const d = new Date(dateStr);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}-${mm}-${yy}`;
 }
 
 // Many meeting titles start with a YYYY-MM-DD prefix (the Drive doc convention).
