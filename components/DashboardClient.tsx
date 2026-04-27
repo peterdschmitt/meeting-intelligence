@@ -87,6 +87,7 @@ export default function DashboardClient() {
   const [mtgDir, setMtgDir] = useState<'asc' | 'desc'>('asc');
   const [actSort, setActSort] = useState<ActSortKey>(null);
   const [actDir, setActDir] = useState<'asc' | 'desc'>('asc');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [today] = useState(() =>
     new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())
   );
@@ -203,6 +204,46 @@ export default function DashboardClient() {
     }
   }, []);
 
+  // Per-row patch: optimistically update one action item, revert on failure.
+  const patchAction = useCallback(async (id: string, body: Record<string, unknown>) => {
+    const prev = actionItems;
+    setActionItems((items) => items.map((i) => i.id === id ? { ...i, ...body } as ActionItem : i));
+    try {
+      const res = await fetch(`/api/action-items/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('patch failed');
+    } catch {
+      setActionItems(prev);
+    }
+  }, [actionItems]);
+
+  // Bulk: apply a body to every selected id sequentially (optimistic, no rollback on partial failure).
+  const applyBulk = useCallback(async (body: Record<string, unknown>) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setActionItems((items) => items.map((i) => ids.includes(i.id) ? { ...i, ...body } as ActionItem : i));
+    await Promise.all(ids.map((id) =>
+      fetch(`/api/action-items/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).catch(() => null),
+    ));
+    setSelected(new Set());
+  }, [selected]);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   // Left pane — recent meetings
   const leftPane = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)', minWidth: 0 }}>
@@ -244,6 +285,10 @@ export default function DashboardClient() {
   );
 
   // Right pane — open actions
+  const allVisibleIds = sortedOpenActions.map((a) => a.id);
+  const allChecked = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
+  const cols = '24px 100px 80px 90px 1fr 90px';
+
   const rightPane = (
     <div className="detail-pane" style={{ background: 'var(--apex-panel)' }}>
       <div className="detail-pane-header">
@@ -251,11 +296,73 @@ export default function DashboardClient() {
         <Link href="/action-items" className="filter-btn">View all</Link>
       </div>
 
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '28px 90px 1fr 80px' }}>
-        <SortHeader label="St"    k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Owner" k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Task"  k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Due"   k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
+      {/* Bulk action bar — appears when rows are selected. */}
+      {selected.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+          background: 'rgba(46,98,255,0.08)', borderBottom: '1px solid var(--apex-border)',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--apex-text)' }}>{selected.size} selected</span>
+          <span style={{ width: 1, height: 16, background: 'var(--apex-border-bright)' }} />
+          <select
+            className="inline-select"
+            value=""
+            onChange={(e) => { const v = e.target.value; if (v) applyBulk({ status: v }); e.currentTarget.value = ''; }}
+            style={{ height: 24, fontSize: 11 }}
+          >
+            <option value="">Status…</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="blocked">Blocked</option>
+            <option value="deferred">Deferred</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select
+            className="inline-select"
+            value=""
+            onChange={(e) => { const v = e.target.value; if (v) applyBulk({ priority: v }); e.currentTarget.value = ''; }}
+            style={{ height: 24, fontSize: 11 }}
+          >
+            <option value="">Priority…</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <input
+            type="date"
+            onChange={(e) => { if (e.target.value) applyBulk({ dueDate: e.target.value }); e.currentTarget.value = ''; }}
+            title="Set due date for selected"
+            style={{ height: 24, fontSize: 11, padding: '0 6px', background: 'var(--apex-panel)', color: 'var(--apex-text)', border: '1px solid var(--apex-border)', borderRadius: 4 }}
+          />
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSelected(new Set())}
+            style={{ height: 24, fontSize: 11, marginLeft: 'auto' }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div className="apex-grid-header" style={{ gridTemplateColumns: cols }}>
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <input
+            type="checkbox"
+            checked={allChecked}
+            onChange={(e) => {
+              if (e.target.checked) setSelected(new Set(allVisibleIds));
+              else setSelected(new Set());
+            }}
+            title="Select all visible"
+          />
+        </span>
+        <SortHeader label="Status"   k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--apex-text-muted)', textTransform: 'uppercase' }}>Pri</span>
+        <SortHeader label="Owner"    k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Task"     k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Due"      k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -264,35 +371,74 @@ export default function DashboardClient() {
         ) : (
           sortedOpenActions.map((a) => {
             const status = a.status ?? 'open';
+            const priority = a.priority ?? 'medium';
             const overdue = isOverdue(a.dueDate);
+            const isSel = selected.has(a.id);
             return (
-              <Link
+              <div
                 key={a.id}
-                href="/action-items"
                 className="apex-grid-row"
-                style={{ gridTemplateColumns: '28px 90px 1fr 80px' }}
+                style={{
+                  gridTemplateColumns: cols,
+                  background: isSel ? 'rgba(46,98,255,0.06)' : undefined,
+                  alignItems: 'center',
+                }}
               >
-                <span
-                  className={`badge badge-${status}`}
-                  onClick={(e) => { e.preventDefault(); handleStatusCycle(a, e); }}
-                  title={`${status.replace('_', ' ').toUpperCase()} — click to cycle`}
-                  style={{
-                    width: 20, height: 20, padding: 0,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700,
-                  }}
-                >
-                  {status === 'in_progress' ? 'P' : status.charAt(0).toUpperCase()}
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={isSel}
+                    onChange={() => toggleSelected(a.id)}
+                  />
                 </span>
+                <select
+                  className="inline-select"
+                  value={status}
+                  onChange={(e) => patchAction(a.id, { status: e.target.value })}
+                  style={{ height: 22, fontSize: 11 }}
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="deferred">Deferred</option>
+                  <option value="done">Done</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <select
+                  className="inline-select"
+                  value={priority}
+                  onChange={(e) => patchAction(a.id, { priority: e.target.value })}
+                  style={{ height: 22, fontSize: 11 }}
+                >
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <span className="avatar" style={{ width: 18, height: 18, fontSize: 8 }}>{initials(a.assignee)}</span>
-                  <span className="cell-secondary" style={{ fontSize: 11 }}>{a.assignee?.split(' ')[0] ?? '—'}</span>
+                  <span className="cell-secondary" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {a.assignee?.split(' ')[0] ?? '—'}
+                  </span>
                 </span>
-                <span className="cell-primary">{a.title}</span>
-                <span className="cell-meta" style={{ textAlign: 'right', color: overdue ? 'var(--apex-error)' : undefined }}>
-                  {a.dueDate ? formatDate(a.dueDate) : '—'}
-                </span>
-              </Link>
+                <Link href="/action-items" className="cell-primary" style={{ textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.title}
+                </Link>
+                <input
+                  type="date"
+                  value={a.dueDate ?? ''}
+                  onChange={(e) => patchAction(a.id, { dueDate: e.target.value || null })}
+                  style={{
+                    height: 22, fontSize: 10.5, padding: '0 4px', textAlign: 'right',
+                    background: 'transparent',
+                    color: overdue ? 'var(--apex-error)' : 'var(--apex-text-muted)',
+                    border: '1px solid transparent',
+                    borderRadius: 3,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--apex-border)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; }}
+                />
+              </div>
             );
           })
         )}
