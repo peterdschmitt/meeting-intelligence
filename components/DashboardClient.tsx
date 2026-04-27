@@ -23,6 +23,14 @@ interface ActionItem {
   meetingTitle?: string | null;
   dueDate?: string | null;
   priority?: string | null;
+  createdAt?: string | null;
+}
+
+function daysOutstanding(createdAt: string | null | undefined): number | null {
+  if (!createdAt) return null;
+  const created = new Date(createdAt).getTime();
+  if (isNaN(created)) return null;
+  return Math.max(0, Math.floor((Date.now() - created) / 86400000));
 }
 
 interface Contact {
@@ -77,7 +85,7 @@ function initials(name: string | null | undefined): string {
 }
 
 type MtgSortKey = 'date' | 'title' | 'act' | null;
-type ActSortKey = 'status' | 'owner' | 'task' | 'due' | null;
+type ActSortKey = 'status' | 'owner' | 'task' | 'due' | 'created' | 'days' | null;
 
 export default function DashboardClient() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -153,11 +161,13 @@ export default function DashboardClient() {
     };
     const v = (a: ActionItem): number | string => {
       switch (actSort) {
-        case 'status': return STATUS_ORDER[a.status ?? 'open'] ?? 99;
-        case 'owner':  return (a.assignee ?? '~~~').toLowerCase();
-        case 'task':   return a.title.toLowerCase();
-        case 'due':    return a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-        default:       return '';
+        case 'status':  return STATUS_ORDER[a.status ?? 'open'] ?? 99;
+        case 'owner':   return (a.assignee ?? '~~~').toLowerCase();
+        case 'task':    return a.title.toLowerCase();
+        case 'due':     return a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        case 'created': return a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        case 'days':    return daysOutstanding(a.createdAt) ?? -1;
+        default:        return '';
       }
     };
     return [...openActions].sort((a, b) => {
@@ -287,7 +297,8 @@ export default function DashboardClient() {
   // Right pane — open actions
   const allVisibleIds = sortedOpenActions.map((a) => a.id);
   const allChecked = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
-  const cols = '24px 100px 80px 90px 1fr 90px';
+  // Layout: checkbox | status | priority | owner avatar | task | created | days | due
+  const cols = '20px 90px 70px 22px 1fr 60px 38px 75px';
 
   const rightPane = (
     <div className="detail-pane" style={{ background: 'var(--apex-panel)' }}>
@@ -358,11 +369,13 @@ export default function DashboardClient() {
             title="Select all visible"
           />
         </span>
-        <SortHeader label="Status"   k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Status"  k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
         <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--apex-text-muted)', textTransform: 'uppercase' }}>Pri</span>
-        <SortHeader label="Owner"    k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Task"     k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Due"      k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
+        <SortHeader label="Who"     k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Task"    k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Created" k="created" sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
+        <SortHeader label="Days"    k="days"   sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
+        <SortHeader label="Due"     k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -415,15 +428,18 @@ export default function DashboardClient() {
                   <option value="medium">Medium</option>
                   <option value="low">Low</option>
                 </select>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <span title={a.assignee ?? ''} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span className="avatar" style={{ width: 18, height: 18, fontSize: 8 }}>{initials(a.assignee)}</span>
-                  <span className="cell-secondary" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {a.assignee?.split(' ')[0] ?? '—'}
-                  </span>
                 </span>
-                <Link href="/action-items" className="cell-primary" style={{ textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Link href="/action-items" className="cell-primary" title={a.title} style={{ textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {a.title}
                 </Link>
+                <span className="cell-meta" style={{ fontSize: 10.5, textAlign: 'right' }}>
+                  {a.createdAt ? formatDate(a.createdAt) : '—'}
+                </span>
+                <span className="cell-meta" style={{ fontSize: 10.5, textAlign: 'right' }}>
+                  {(() => { const d = daysOutstanding(a.createdAt); return d === null ? '—' : `${d}d`; })()}
+                </span>
                 <input
                   type="date"
                   value={a.dueDate ?? ''}

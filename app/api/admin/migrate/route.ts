@@ -130,6 +130,11 @@ const STATEMENTS = [
      AND array_length(m.participants, 1) > 0
      AND NOT EXISTS (SELECT 1 FROM meeting_attendees a WHERE a.meeting_id = m.id)
      AND length(trim(p.name)) > 0`,
+
+  // 6. People classification + email capture
+  `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS kind TEXT`,
+  `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS exclude_from_tasks BOOLEAN DEFAULT FALSE`,
+  `ALTER TABLE meeting_attendees ADD COLUMN IF NOT EXISTS email TEXT`,
 ];
 
 function authorize(request: NextRequest): NextResponse | null {

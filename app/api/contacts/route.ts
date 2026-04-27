@@ -14,6 +14,8 @@ export async function GET(_request: NextRequest) {
         companyId: contacts.companyId,
         companyName: companies.name,
         notes: contacts.notes,
+        kind: contacts.kind,
+        excludeFromTasks: contacts.excludeFromTasks,
         createdAt: contacts.createdAt,
         updatedAt: contacts.updatedAt,
       })

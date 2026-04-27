@@ -16,6 +16,11 @@ export const contacts = pgTable('contacts', {
   role: text('role'),
   companyId: uuid('company_id').references(() => companies.id),
   notes: text('notes'),
+  // 'team' | 'partner' | 'external' | null — drives default assumptions and grouping.
+  kind: text('kind'),
+  // When true, this person's action items are hidden from task lists (Follow-ups,
+  // Inbox Open Actions, Action Items) — for people who don't track in our system.
+  excludeFromTasks: boolean('exclude_from_tasks').default(false),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -50,6 +55,7 @@ export const meetingAttendees = pgTable('meeting_attendees', {
   meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
   contactId: uuid('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
+  email: text('email'),
   roleAtMeeting: text('role_at_meeting'),
   engagement: text('engagement'),
   position: integer('position').default(0),
