@@ -32,10 +32,8 @@ export async function POST(
     .orderBy(desc(meetingPrepGuides.generatedAt))
     .limit(1);
 
-  let prepGuide: unknown = null;
-  if (latest) {
-    try { prepGuide = JSON.parse(latest.guide as unknown as string); } catch { prepGuide = null; }
-  }
+  // jsonb column comes back already-parsed
+  const prepGuide: unknown = latest?.guide ?? null;
 
   return NextResponse.json({
     prepGuide,

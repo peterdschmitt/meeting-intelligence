@@ -80,11 +80,8 @@ export async function GET(): Promise<NextResponse> {
       let prepGuideGeneratedAt: string | null = null;
       let prepGuideModel: string | null = null;
       if (latestGuide.length > 0) {
-        try {
-          prepGuide = JSON.parse(latestGuide[0].guide as unknown as string);
-        } catch {
-          prepGuide = null;
-        }
+        // jsonb column comes back already-parsed
+        prepGuide = latestGuide[0].guide;
         prepGuideGeneratedAt = latestGuide[0].generatedAt
           ? new Date(latestGuide[0].generatedAt).toISOString()
           : null;

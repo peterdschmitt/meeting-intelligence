@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date, boolean, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, date, boolean, integer, jsonb } from 'drizzle-orm/pg-core';
 
 export const companies = pgTable('companies', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -148,7 +148,7 @@ export const actionItems = pgTable('action_items', {
 export const meetingPrepGuides = pgTable('meeting_prep_guides', {
   id: uuid('id').primaryKey().defaultRandom(),
   meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
-  guide: text('guide').notNull(), // JSON-encoded; jsonb-typed in Postgres via migration
+  guide: jsonb('guide').notNull().$type<unknown>(),
   inputHash: text('input_hash').notNull(),
   model: text('model').notNull(),
   generatedAt: timestamp('generated_at').defaultNow().notNull(),

@@ -108,7 +108,7 @@ export async function generatePrep(
     .insert(meetingPrepGuides)
     .values({
       meetingId,
-      guide: JSON.stringify(guideJson),
+      guide: guideJson,
       inputHash,
       model: MODEL,
     })
