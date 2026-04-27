@@ -45,6 +45,7 @@ function effectiveCreatedDate(item: { createdAt?: string | null; meetingTitle?: 
 interface Contact {
   id: string;
   fullName: string;
+  excludeFromTasks?: boolean;
 }
 
 // Many meeting titles start with a YYYY-MM-DD prefix (the Drive doc convention).
@@ -132,9 +133,21 @@ export default function DashboardClient() {
     [meetings],
   );
 
+  // Lowercase set of contact names whose tasks should be hidden from task lists.
+  const excludedAssignees = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of contacts) {
+      if (c.excludeFromTasks && c.fullName) s.add(c.fullName.toLowerCase());
+    }
+    return s;
+  }, [contacts]);
+
   const openActions = useMemo(() =>
-    actionItems.filter((a) => a.status !== 'done' && a.status !== 'cancelled').slice(0, 60),
-    [actionItems],
+    actionItems
+      .filter((a) => a.status !== 'done' && a.status !== 'cancelled')
+      .filter((a) => !a.assignee || !excludedAssignees.has(a.assignee.toLowerCase()))
+      .slice(0, 60),
+    [actionItems, excludedAssignees],
   );
 
   const actionCounts = useMemo(() => {
@@ -200,13 +213,16 @@ export default function DashboardClient() {
     } else { setActSort(k); setActDir('asc'); }
   };
 
-  const stats = useMemo(() => ({
-    week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
-    month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
-    open: actionItems.filter((a) => a.status !== 'done' && a.status !== 'cancelled').length,
-    overdue: actionItems.filter((a) => a.status !== 'done' && isOverdue(a.dueDate)).length,
-    contacts: contacts.length,
-  }), [meetings, actionItems, contacts]);
+  const stats = useMemo(() => {
+    const visible = actionItems.filter((a) => !a.assignee || !excludedAssignees.has(a.assignee.toLowerCase()));
+    return {
+      week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
+      month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
+      open: visible.filter((a) => a.status !== 'done' && a.status !== 'cancelled').length,
+      overdue: visible.filter((a) => a.status !== 'done' && isOverdue(a.dueDate)).length,
+      contacts: contacts.length,
+    };
+  }, [meetings, actionItems, contacts, excludedAssignees]);
 
   const handleStatusCycle = useCallback(async (item: ActionItem, e: React.MouseEvent) => {
     e.stopPropagation();

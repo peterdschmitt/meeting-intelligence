@@ -89,16 +89,23 @@ type SortKey = 'status' | 'priority' | 'urgency' | 'owner' | 'task' | 'days' | '
 
 export default function FollowUpsPage() {
   const [items, setItems] = useState<ActionItem[]>([]);
+  const [excludedAssignees, setExcludedAssignees] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>('importance');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
-    fetch('/api/action-items')
-      .then((r) => r.ok ? r.json() : [])
-      .then((d) => setItems(Array.isArray(d) ? d : []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch('/api/action-items').then((r) => r.ok ? r.json() : []),
+      fetch('/api/contacts').then((r) => r.ok ? r.json() : []),
+    ]).then(([d, c]) => {
+      setItems(Array.isArray(d) ? d : []);
+      const s = new Set<string>();
+      for (const x of (Array.isArray(c) ? c : []) as { fullName?: string; excludeFromTasks?: boolean }[]) {
+        if (x.excludeFromTasks && x.fullName) s.add(x.fullName.toLowerCase());
+      }
+      setExcludedAssignees(s);
+    }).catch(() => setItems([])).finally(() => setLoading(false));
   }, []);
 
   const patchAction = useCallback(async (id: string, body: Record<string, unknown>) => {
@@ -116,10 +123,13 @@ export default function FollowUpsPage() {
     }
   }, [items]);
 
-  // Open items not assigned to Peter — the universe of follow-ups.
+  // Open items not assigned to Peter, and not assigned to anyone marked exclude-from-tasks.
   const openExternal = useMemo(
-    () => items.filter(isOpen).filter((i) => !isMe(i.assignee) && (i.assignee ?? '').trim()),
-    [items],
+    () => items
+      .filter(isOpen)
+      .filter((i) => !isMe(i.assignee) && (i.assignee ?? '').trim())
+      .filter((i) => !i.assignee || !excludedAssignees.has(i.assignee.toLowerCase())),
+    [items, excludedAssignees],
   );
 
   // For per-row "Compose follow-up" we need the full set of that person's open items.

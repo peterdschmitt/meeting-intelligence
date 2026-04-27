@@ -239,6 +239,7 @@ function ActionItemsInner() {
   const search = searchParams?.get('q') ?? '';
 
   const [items, setItems] = useState<ActionItem[]>([]);
+  const [excludedAssignees, setExcludedAssignees] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('today');
   const [group, setGroup] = useState<Group>(() => {
@@ -274,10 +275,22 @@ function ActionItemsInner() {
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/action-items');
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      const [itemsRes, contactsRes] = await Promise.all([
+        fetch('/api/action-items'),
+        fetch('/api/contacts'),
+      ]);
+      if (itemsRes.ok) {
+        const data = await itemsRes.json();
+        setItems(Array.isArray(data) ? data : []);
+      }
+      if (contactsRes.ok) {
+        const cdata = await contactsRes.json() as { fullName?: string; excludeFromTasks?: boolean }[];
+        const s = new Set<string>();
+        for (const c of (Array.isArray(cdata) ? cdata : [])) {
+          if (c.excludeFromTasks && c.fullName) s.add(c.fullName.toLowerCase());
+        }
+        setExcludedAssignees(s);
+      }
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -323,7 +336,9 @@ function ActionItemsInner() {
   ).length, [items]);
 
   const tabFiltered = useMemo(() => {
-    return items.filter((i) => {
+    return items
+      .filter((i) => !i.assignee || !excludedAssignees.has(i.assignee.toLowerCase()))
+      .filter((i) => {
       const snoozed = isSnoozedNow(i);
       const done = i.status === 'done' || i.status === 'cancelled';
       switch (tab) {
@@ -335,7 +350,7 @@ function ActionItemsInner() {
         case 'done':      return done;
       }
     });
-  }, [items, tab]);
+  }, [items, tab, excludedAssignees]);
 
   const visible = useMemo(() => {
     let r = tabFiltered;
