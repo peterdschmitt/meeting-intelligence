@@ -41,10 +41,12 @@ export async function PATCH(
     const { id } = await params;
     const body = (await request.json()) as {
       fullName?: string;
-      email?: string;
-      role?: string;
-      companyId?: string;
-      notes?: string;
+      email?: string | null;
+      role?: string | null;
+      companyId?: string | null;
+      notes?: string | null;
+      kind?: string | null;
+      excludeFromTasks?: boolean;
     };
 
     const updates: Record<string, unknown> = {};
@@ -53,6 +55,13 @@ export async function PATCH(
     if (body.role !== undefined) updates.role = body.role;
     if (body.companyId !== undefined) updates.companyId = body.companyId;
     if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.kind !== undefined) {
+      if (body.kind !== null && !['team', 'partner', 'external'].includes(body.kind)) {
+        return NextResponse.json({ error: 'invalid kind' }, { status: 400 });
+      }
+      updates.kind = body.kind;
+    }
+    if (body.excludeFromTasks !== undefined) updates.excludeFromTasks = body.excludeFromTasks;
     updates.updatedAt = new Date();
 
     const [updated] = await db

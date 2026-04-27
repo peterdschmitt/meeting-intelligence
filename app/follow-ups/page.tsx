@@ -64,6 +64,12 @@ function daysOutstanding(createdAt: string | null | undefined): number | null {
   return Math.max(0, Math.floor((Date.now() - created) / 86400000));
 }
 
+function effectiveCreatedDate(item: { createdAt?: string | null; meetingTitle?: string | null }): string | null {
+  const m = (item.meetingTitle ?? '').match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  return item.createdAt ?? null;
+}
+
 function initials(name: string | null | undefined): string {
   if (!name) return '·';
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
@@ -145,8 +151,8 @@ export default function FollowUpsPage() {
         case 'urgency':    return URGENCY_ORDER[i.urgencyTier ?? 'none'] ?? 99;
         case 'owner':      return (i.assignee ?? '~~~').toLowerCase();
         case 'task':       return i.title.toLowerCase();
-        case 'days':       return daysOutstanding(i.createdAt) ?? -1;
-        case 'created':    return i.createdAt ? new Date(i.createdAt).getTime() : 0;
+        case 'days':       return daysOutstanding(effectiveCreatedDate(i)) ?? -1;
+        case 'created':    { const d = effectiveCreatedDate(i); return d ? new Date(d).getTime() : 0; }
         case 'due':        return i.dueDate ? new Date(i.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
         case 'importance': return -importanceScore(i); // higher score first under default asc
         default:           return '';
@@ -195,7 +201,8 @@ export default function FollowUpsPage() {
         ) : (
           sorted.map((it) => {
             const due = dueLabel(it.dueDate);
-            const days = daysOutstanding(it.createdAt);
+            const created = effectiveCreatedDate(it);
+            const days = daysOutstanding(created);
             const status = it.status ?? 'open';
             const priority = it.priority ?? 'medium';
             const urgency = it.urgencyTier ?? 'none';
@@ -265,7 +272,7 @@ export default function FollowUpsPage() {
                   {days === null ? '—' : `${days}d`}
                 </span>
                 <span style={{ fontSize: 10.5, color: 'var(--apex-text-muted)', textAlign: 'right' }}>
-                  {it.createdAt ? formatDate(it.createdAt) : '—'}
+                  {created ? formatDate(created) : '—'}
                 </span>
                 <span style={{ fontSize: 10.5, color: dueColor(due.tone), textAlign: 'right' }}>
                   {due.label}

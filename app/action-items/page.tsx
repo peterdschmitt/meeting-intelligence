@@ -122,6 +122,14 @@ function ageDays(createdAt: string | null | undefined): number | null {
   return Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
 }
 
+// Action item DB createdAt is the import time — for "created" semantics, prefer
+// the meeting date parsed from the meetingTitle's YYYY-MM-DD prefix.
+function effectiveCreatedDate(item: { createdAt?: string | null; meetingTitle?: string | null }): string | null {
+  const m = (item.meetingTitle ?? '').match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  return item.createdAt ?? null;
+}
+
 function ageDotClass(days: number | null): string {
   if (days === null) return 'age-dot fresh';
   if (days < 4)  return 'age-dot fresh';
@@ -354,8 +362,8 @@ function ActionItemsInner() {
         case 'task':       return displayTitle(item.title, item.assignee).toLowerCase();
         case 'due':        return item.dueDate ? new Date(item.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
         case 'importance': return -importanceScore(item); // negate so default 'asc' sort puts most-important first
-        case 'created':    return item.createdAt ? new Date(item.createdAt).getTime() : 0;
-        case 'days':       return ageDays(item.createdAt) ?? -1;
+        case 'created':    { const d = effectiveCreatedDate(item); return d ? new Date(d).getTime() : 0; }
+        case 'days':       return ageDays(effectiveCreatedDate(item)) ?? -1;
         default:           return '';
       }
     };
@@ -761,14 +769,14 @@ function ActionItemsInner() {
                         )}
                       </span>
 
-                      {/* Days outstanding */}
+                      {/* Days outstanding (since the meeting) */}
                       <span className="cell-meta" style={{ fontSize: 11, textAlign: 'right' }}>
-                        {(() => { const d = ageDays(i.createdAt); return d === null ? '—' : `${d}d`; })()}
+                        {(() => { const d = ageDays(effectiveCreatedDate(i)); return d === null ? '—' : `${d}d`; })()}
                       </span>
 
-                      {/* Created date */}
+                      {/* Created date (the meeting date) */}
                       <span className="cell-meta" style={{ fontSize: 10.5, textAlign: 'right' }}>
-                        {i.createdAt ? formatDate(i.createdAt) : '—'}
+                        {(() => { const d = effectiveCreatedDate(i); return d ? formatDate(d) : '—'; })()}
                       </span>
 
                       {/* Snooze button */}

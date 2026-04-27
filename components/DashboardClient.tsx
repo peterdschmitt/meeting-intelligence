@@ -33,6 +33,15 @@ function daysOutstanding(createdAt: string | null | undefined): number | null {
   return Math.max(0, Math.floor((Date.now() - created) / 86400000));
 }
 
+// The action item's DB createdAt is just when we ingested it. The semantically
+// useful "created" is when it was noted in the meeting — parse from the
+// meeting title's YYYY-MM-DD prefix and fall back to DB createdAt.
+function effectiveCreatedDate(item: { createdAt?: string | null; meetingTitle?: string | null }): string | null {
+  const m = (item.meetingTitle ?? '').match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  return item.createdAt ?? null;
+}
+
 interface Contact {
   id: string;
   fullName: string;
@@ -165,8 +174,8 @@ export default function DashboardClient() {
         case 'owner':   return (a.assignee ?? '~~~').toLowerCase();
         case 'task':    return a.title.toLowerCase();
         case 'due':     return a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-        case 'created': return a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        case 'days':    return daysOutstanding(a.createdAt) ?? -1;
+        case 'created': { const d = effectiveCreatedDate(a); return d ? new Date(d).getTime() : 0; }
+        case 'days':    return daysOutstanding(effectiveCreatedDate(a)) ?? -1;
         default:        return '';
       }
     };
@@ -298,7 +307,7 @@ export default function DashboardClient() {
   const allVisibleIds = sortedOpenActions.map((a) => a.id);
   const allChecked = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
   // Layout: checkbox | status | priority | owner avatar | task | created | days | due
-  const cols = '20px 90px 70px 22px 1fr 60px 38px 75px';
+  const cols = '20px 38px 38px 22px 1fr 60px 38px 75px';
 
   const rightPane = (
     <div className="detail-pane" style={{ background: 'var(--apex-panel)' }}>
@@ -408,25 +417,27 @@ export default function DashboardClient() {
                   className="inline-select"
                   value={status}
                   onChange={(e) => patchAction(a.id, { status: e.target.value })}
-                  style={{ height: 22, fontSize: 11 }}
+                  title={`Status: ${status.replace('_', ' ')}`}
+                  style={{ height: 22, fontSize: 11, padding: '0 4px', textAlign: 'center' }}
                 >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="deferred">Deferred</option>
-                  <option value="done">Done</option>
-                  <option value="cancelled">Cancelled</option>
+                  <option value="open">O</option>
+                  <option value="in_progress">IP</option>
+                  <option value="blocked">B</option>
+                  <option value="deferred">De</option>
+                  <option value="done">Dn</option>
+                  <option value="cancelled">X</option>
                 </select>
                 <select
                   className="inline-select"
                   value={priority}
                   onChange={(e) => patchAction(a.id, { priority: e.target.value })}
-                  style={{ height: 22, fontSize: 11 }}
+                  title={`Priority: ${priority}`}
+                  style={{ height: 22, fontSize: 11, padding: '0 4px', textAlign: 'center' }}
                 >
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  <option value="critical">C</option>
+                  <option value="high">H</option>
+                  <option value="medium">M</option>
+                  <option value="low">L</option>
                 </select>
                 <span title={a.assignee ?? ''} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span className="avatar" style={{ width: 18, height: 18, fontSize: 8 }}>{initials(a.assignee)}</span>
@@ -435,10 +446,10 @@ export default function DashboardClient() {
                   {a.title}
                 </Link>
                 <span className="cell-meta" style={{ fontSize: 10.5, textAlign: 'right' }}>
-                  {a.createdAt ? formatDate(a.createdAt) : '—'}
+                  {(() => { const d = effectiveCreatedDate(a); return d ? formatDate(d) : '—'; })()}
                 </span>
                 <span className="cell-meta" style={{ fontSize: 10.5, textAlign: 'right' }}>
-                  {(() => { const d = daysOutstanding(a.createdAt); return d === null ? '—' : `${d}d`; })()}
+                  {(() => { const d = daysOutstanding(effectiveCreatedDate(a)); return d === null ? '—' : `${d}d`; })()}
                 </span>
                 <input
                   type="date"

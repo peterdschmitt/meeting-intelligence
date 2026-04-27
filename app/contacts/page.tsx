@@ -14,6 +14,8 @@ interface Contact {
   role: string | null;
   companyId: string | null;
   companyName: string | null;
+  kind?: string | null;
+  excludeFromTasks?: boolean;
 }
 
 interface Meeting {
@@ -81,6 +83,19 @@ function ContactsInner() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Inline contact update — optimistic, revert on failure.
+  const patchContact = useCallback(async (id: string, body: Record<string, unknown>) => {
+    const prev = contacts;
+    setContacts((arr) => arr.map((c) => (c.id === id ? { ...c, ...body } as Contact : c)));
+    try {
+      const res = await fetch(`/api/contacts/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('patch failed');
+    } catch { setContacts(prev); }
+  }, [contacts]);
 
   const meetingsByParticipant = useMemo(() => {
     const map = new Map<string, Meeting[]>();
@@ -172,11 +187,13 @@ function ContactsInner() {
         <div className="apex-stat"><span className="apex-stat-value">{new Set(contacts.map((c) => c.companyName).filter(Boolean)).size}</span><span className="apex-stat-label">Companies</span></div>
       </div>
 
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '32px 1fr 130px 130px 50px 80px' }}>
+      <div className="apex-grid-header" style={{ gridTemplateColumns: '32px 1fr 130px 110px 95px 60px 50px 80px' }}>
         <span></span>
         <SortHeader label="Name"    k="name"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Company" k="company" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Role"    k="role"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--apex-text-muted)', textTransform: 'uppercase' }}>Kind</span>
+        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--apex-text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Excl</span>
         <SortHeader label="Mtgs"    k="mtgs"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
         <SortHeader label="Last"    k="last"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
       </div>
@@ -194,7 +211,7 @@ function ContactsInner() {
               <div
                 key={c.id}
                 className={`apex-grid-row${isSel ? ' selected' : ''}`}
-                style={{ gridTemplateColumns: '32px 1fr 130px 130px 50px 80px' }}
+                style={{ gridTemplateColumns: '32px 1fr 130px 110px 95px 60px 50px 80px', alignItems: 'center' }}
                 onClick={() => setSelected(isSel ? null : c)}
               >
                 <span className="avatar">{initials(c.fullName)}</span>
@@ -204,6 +221,27 @@ function ContactsInner() {
                 </div>
                 <span className="cell-secondary">{c.companyName ?? '—'}</span>
                 <span className="cell-meta">{c.role ?? '—'}</span>
+                <select
+                  className="inline-select"
+                  value={c.kind ?? ''}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => patchContact(c.id, { kind: e.target.value || null })}
+                  style={{ height: 22, fontSize: 11 }}
+                >
+                  <option value="">—</option>
+                  <option value="team">Team</option>
+                  <option value="partner">Partner</option>
+                  <option value="external">External</option>
+                </select>
+                <span style={{ display: 'flex', justifyContent: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={c.excludeFromTasks ?? false}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchContact(c.id, { excludeFromTasks: e.target.checked })}
+                    title="Exclude this person's tasks from task lists"
+                  />
+                </span>
                 <span className="cell-meta" style={{ textAlign: 'right' }}>{mc > 0 ? mc : '—'}</span>
                 <span className="cell-meta" style={{ textAlign: 'right' }}>{getLastSeen(c)}</span>
               </div>
