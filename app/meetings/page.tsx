@@ -74,6 +74,23 @@ function seriesName(title: string): string {
   return (m ? m[1] : title).trim();
 }
 
+// Pull the YYYY-MM-DD prefix from the title when meetingDate is null.
+function dateFromTitle(title: string): string | null {
+  const m = title.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+function effectiveMeetingDate(m: { meetingDate: string | null; title: string }): string | null {
+  return m.meetingDate ?? dateFromTitle(m.title);
+}
+
+function isUpcoming(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return d.getTime() >= today.getTime();
+}
+
 export default function MeetingsPage() {
   return (
     <Suspense fallback={<div style={{ padding: 32, fontSize: 12, color: 'var(--apex-text-faint)' }}>Loading…</div>}>
@@ -144,19 +161,18 @@ function MeetingsInner() {
     return r;
   }, [meetings, search, seriesFilter]);
 
-  const grouped = useMemo(() => {
-    const groups = new Map<string, Meeting[]>();
-    const sorted = [...filtered].sort((a, b) => {
-      const ad = a.meetingDate ? new Date(a.meetingDate).getTime() : 0;
-      const bd = b.meetingDate ? new Date(b.meetingDate).getTime() : 0;
-      return bd - ad;
-    });
-    for (const m of sorted) {
-      const key = getWeekLabel(m.meetingDate);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(m);
+  // Split into Upcoming vs Past (using effective date — pulls from title prefix
+  // when meetingDate is null). Upcoming sorted soonest-first, Past sorted most-recent-first.
+  const { upcoming, past } = useMemo(() => {
+    const up: Meeting[] = [];
+    const pa: Meeting[] = [];
+    for (const m of filtered) {
+      const ed = effectiveMeetingDate(m);
+      if (isUpcoming(ed)) up.push(m); else pa.push(m);
     }
-    return Array.from(groups.entries());
+    up.sort((a, b) => (new Date(effectiveMeetingDate(a) ?? 0).getTime()) - (new Date(effectiveMeetingDate(b) ?? 0).getTime()));
+    pa.sort((a, b) => (new Date(effectiveMeetingDate(b) ?? 0).getTime()) - (new Date(effectiveMeetingDate(a) ?? 0).getTime()));
+    return { upcoming: up, past: pa };
   }, [filtered]);
 
   const actionCounts = useMemo(() => {
@@ -169,8 +185,8 @@ function MeetingsInner() {
 
   const stats = useMemo(() => ({
     total: meetings.length,
-    week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
-    month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
+    week: meetings.filter((m) => isThisWeek(effectiveMeetingDate(m))).length,
+    month: meetings.filter((m) => isThisMonth(effectiveMeetingDate(m))).length,
     showing: filtered.length,
   }), [meetings, filtered]);
 
@@ -180,7 +196,7 @@ function MeetingsInner() {
     const sign = sortDir === 'asc' ? 1 : -1;
     const v = (m: Meeting): number | string => {
       switch (sortKey) {
-        case 'date':    return m.meetingDate ? new Date(m.meetingDate).getTime() : 0;
+        case 'date':    { const d = effectiveMeetingDate(m); return d ? new Date(d).getTime() : 0; }
         case 'title':   return m.title.toLowerCase();
         case 'company': return (m.companyName ?? '~~~').toLowerCase();
         case 'ppl':     return parseParticipants(m.participants).length;
@@ -275,7 +291,7 @@ function MeetingsInner() {
                 style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}
                 onClick={() => setSelected(isSelected ? null : m)}
               >
-                <span className="cell-meta">{formatDate(m.meetingDate)}</span>
+                <span className="cell-meta">{formatDate(effectiveMeetingDate(m))}</span>
                 <span className="cell-primary">{m.title}</span>
                 <span className="cell-secondary">{m.companyName ?? '—'}</span>
                 <span className="cell-meta" style={{ textAlign: 'right' }}>{parts.length || '—'}</span>
@@ -285,27 +301,46 @@ function MeetingsInner() {
               </div>
             );
           };
+
+          const sectionHeader = (key: string, label: string, count: number) => {
+            const isCollapsed = collapsed.has(key);
+            return (
+              <div key={`hdr-${key}`} className="apex-group-header" onClick={() => toggleCollapse(key)}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 9, color: 'var(--apex-text-faint)' }}>{isCollapsed ? '▶' : '▼'}</span>
+                  {label}
+                </span>
+                <span>{count} {count === 1 ? 'meeting' : 'meetings'}</span>
+              </div>
+            );
+          };
+
           if (loading) return <Empty msg="Loading…" />;
+
+          // When the user has clicked a sortable column header, ignore the
+          // upcoming/past split and render a flat sorted list.
           if (sortedFlat) {
             if (sortedFlat.length === 0) return <Empty msg="No meetings found" />;
             return sortedFlat.map(renderRow);
           }
-          if (grouped.length === 0) return <Empty msg="No meetings found" />;
-          return grouped.map(([weekLabel, ms]) => {
-            const isCollapsed = collapsed.has(weekLabel);
-            return (
-              <div key={weekLabel}>
-                <div className="apex-group-header" onClick={() => toggleCollapse(weekLabel)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 9, color: 'var(--apex-text-faint)' }}>{isCollapsed ? '▶' : '▼'}</span>
-                    {weekLabel}
-                  </span>
-                  <span>{ms.length} {ms.length === 1 ? 'meeting' : 'meetings'}</span>
-                </div>
-                {!isCollapsed && ms.map(renderRow)}
-              </div>
-            );
-          });
+
+          if (upcoming.length === 0 && past.length === 0) return <Empty msg="No meetings found" />;
+
+          return (
+            <>
+              {/* Upcoming on top */}
+              {sectionHeader('upcoming', 'Upcoming', upcoming.length)}
+              {!collapsed.has('upcoming') && (
+                upcoming.length === 0
+                  ? <div style={{ padding: '14px 16px', fontSize: 11.5, color: 'var(--apex-text-faint)' }}>No upcoming meetings</div>
+                  : upcoming.map(renderRow)
+              )}
+
+              {/* Past below */}
+              {sectionHeader('past', 'Past', past.length)}
+              {!collapsed.has('past') && past.map(renderRow)}
+            </>
+          );
         })()}
       </div>
     </div>
