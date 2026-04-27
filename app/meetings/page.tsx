@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
 import SortHeader from '@/components/SortHeader';
+import { formatDate } from '@/lib/format-date';
 
 interface Meeting {
   id: string;
@@ -28,12 +29,6 @@ function parseParticipants(raw: string[] | string | null): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
   try { return JSON.parse(raw) as string[]; } catch { return []; }
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  const x = new Date(dateStr);
-  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
 }
 
 function formatLong(dateStr: string | null): string {

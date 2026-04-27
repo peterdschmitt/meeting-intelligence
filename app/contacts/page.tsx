@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ResizableSplit from '@/components/ResizableSplit';
 import SortHeader from '@/components/SortHeader';
+import { formatDate } from '@/lib/format-date';
 
 interface Contact {
   id: string;
@@ -34,12 +35,6 @@ interface ActionItem {
 
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
-}
-
-function formatDate(d: string | null): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
 }
 
 function parseParticipants(raw: string[] | string | null): string[] {

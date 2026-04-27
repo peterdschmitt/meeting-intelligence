@@ -6,6 +6,7 @@ import ResizableSplit from '@/components/ResizableSplit';
 import ActionDetailPane, { type ActionItemDetail } from '@/components/ActionDetailPane';
 import SortHeader from '@/components/SortHeader';
 import { importanceScore } from '@/lib/importance';
+import { formatDate } from '@/lib/format-date';
 
 interface ActionItem {
   id: string;
@@ -83,12 +84,6 @@ const URGENCY_ORDER: string[] = [
 ];
 
 function startOfDay(d: Date): number { const c = new Date(d); c.setHours(0, 0, 0, 0); return c.getTime(); }
-
-function formatDate(d: string | null | undefined): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
-}
 
 function relativeDue(d: string | null | undefined): { label: string; tone: 'overdue' | 'today' | 'soon' | 'normal' | 'none' } {
   if (!d) return { label: '—', tone: 'none' };

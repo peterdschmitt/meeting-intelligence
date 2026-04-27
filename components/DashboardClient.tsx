@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import ResizableSplit from '@/components/ResizableSplit';
 import SortHeader from '@/components/SortHeader';
+import { formatDate } from '@/lib/format-date';
 
 interface Meeting {
   id: string;
@@ -27,15 +28,6 @@ interface ActionItem {
 interface Contact {
   id: string;
   fullName: string;
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}-${mm}-${yy}`;
 }
 
 // Many meeting titles start with a YYYY-MM-DD prefix (the Drive doc convention).

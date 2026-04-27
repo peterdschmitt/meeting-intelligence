@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import SortHeader from '@/components/SortHeader';
+import { formatDate } from '@/lib/format-date';
 
 interface Row {
   id: string;
@@ -16,12 +17,6 @@ interface Row {
 }
 
 type SortKey = 'decision' | 'owner' | 'meeting' | 'date' | null;
-
-function formatDate(d: string | null): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
-}
 
 export default function DecisionsListPage() {
   const [rows, setRows] = useState<Row[]>([]);

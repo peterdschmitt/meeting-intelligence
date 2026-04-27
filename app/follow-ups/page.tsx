@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { compareByImportance, importanceScore } from '@/lib/importance';
+import { formatDate } from '@/lib/format-date';
 
 interface ActionItem {
   id: string;
@@ -25,12 +26,6 @@ const isMe = (s: string | null | undefined): boolean => {
   const a = s.toLowerCase();
   return ME_PATTERNS.some((p) => a.includes(p));
 };
-
-function formatDate(d: string | null | undefined): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
-}
 
 function isOpen(item: ActionItem): boolean {
   const s = item.status ?? 'open';
