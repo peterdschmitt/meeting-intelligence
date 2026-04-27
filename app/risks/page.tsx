@@ -28,7 +28,8 @@ const STATUS_OPTIONS = [
 
 function formatDate(d: string | null): string {
   if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(d));
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
 }
 
 export default function RisksListPage() {

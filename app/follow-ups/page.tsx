@@ -28,7 +28,8 @@ const isMe = (s: string | null | undefined): boolean => {
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(d));
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
 }
 
 function isOpen(item: ActionItem): boolean {

@@ -38,7 +38,8 @@ function initials(name: string): string {
 
 function formatDate(d: string | null): string {
   if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(d));
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
 }
 
 function parseParticipants(raw: string[] | string | null): string[] {

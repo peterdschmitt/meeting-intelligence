@@ -32,7 +32,8 @@ function parseParticipants(raw: string[] | string | null): string[] {
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
+  const x = new Date(dateStr);
+  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getFullYear()).slice(-2)}`;
 }
 
 function formatLong(dateStr: string | null): string {
