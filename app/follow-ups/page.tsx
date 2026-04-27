@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import SortHeader from '@/components/SortHeader';
 import { compareByImportance, importanceScore } from '@/lib/importance';
 import { formatDate } from '@/lib/format-date';
 
@@ -32,6 +33,12 @@ function isOpen(item: ActionItem): boolean {
   return s !== 'done' && s !== 'cancelled';
 }
 
+const STATUS_ORDER: Record<string, number> = {
+  blocked: 0, in_progress: 1, open: 2, deferred: 3, done: 4, cancelled: 5,
+};
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+const URGENCY_ORDER: Record<string, number> = { urgent: 0, this_week: 1, waiting_on: 2, none: 3 };
+
 function dueLabel(d: string | null | undefined): { label: string; tone: 'overdue' | 'today' | 'soon' | 'normal' | 'none' } {
   if (!d) return { label: '—', tone: 'none' };
   const due = new Date(d); due.setHours(0, 0, 0, 0);
@@ -50,6 +57,18 @@ function dueColor(tone: 'overdue' | 'today' | 'soon' | 'normal' | 'none'): strin
   return 'var(--apex-text-muted)';
 }
 
+function daysOutstanding(createdAt: string | null | undefined): number | null {
+  if (!createdAt) return null;
+  const created = new Date(createdAt).getTime();
+  if (isNaN(created)) return null;
+  return Math.max(0, Math.floor((Date.now() - created) / 86400000));
+}
+
+function initials(name: string | null | undefined): string {
+  if (!name) return '·';
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
+}
+
 function composeMailto(person: string, items: ActionItem[]): string {
   const subject = `Following up on ${items.length} item${items.length === 1 ? '' : 's'}`;
   const lines = items.map((it) => {
@@ -60,9 +79,13 @@ function composeMailto(person: string, items: ActionItem[]): string {
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
+type SortKey = 'status' | 'priority' | 'urgency' | 'owner' | 'task' | 'days' | 'due' | 'importance' | null;
+
 export default function FollowUpsPage() {
   const [items, setItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey>('importance');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     fetch('/api/action-items')
@@ -72,99 +95,187 @@ export default function FollowUpsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, ActionItem[]>();
-    for (const it of items) {
-      if (!isOpen(it)) continue;
-      const name = (it.assignee ?? '').trim();
-      if (!name) continue;
-      if (isMe(name)) continue;
-      const arr = map.get(name) ?? [];
-      arr.push(it);
-      map.set(name, arr);
+  const patchAction = useCallback(async (id: string, body: Record<string, unknown>) => {
+    const prev = items;
+    setItems((arr) => arr.map((i) => i.id === id ? { ...i, ...body } as ActionItem : i));
+    try {
+      const res = await fetch(`/api/action-items/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('patch failed');
+    } catch {
+      setItems(prev);
     }
-    // Sort each group by importance desc.
-    for (const arr of map.values()) arr.sort(compareByImportance);
-    // Sort groups by their TOP item's importance.
-    return Array.from(map.entries())
-      .map(([name, arr]) => ({ name, items: arr, top: importanceScore(arr[0]) }))
-      .sort((a, b) => b.top - a.top);
   }, [items]);
 
-  const totalOpen = useMemo(() => items.filter(isOpen).filter((i) => !isMe(i.assignee)).length, [items]);
+  // Open items not assigned to Peter — the universe of follow-ups.
+  const openExternal = useMemo(
+    () => items.filter(isOpen).filter((i) => !isMe(i.assignee) && (i.assignee ?? '').trim()),
+    [items],
+  );
+
+  // For per-row "Compose follow-up" we need the full set of that person's open items.
+  const itemsByPerson = useMemo(() => {
+    const m = new Map<string, ActionItem[]>();
+    for (const it of openExternal) {
+      const name = (it.assignee ?? '').trim();
+      const arr = m.get(name) ?? [];
+      arr.push(it);
+      m.set(name, arr);
+    }
+    return m;
+  }, [openExternal]);
+
+  const onSort = (k: NonNullable<SortKey>) => {
+    if (sortKey === k) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortKey(null); setSortDir('asc'); }
+    } else { setSortKey(k); setSortDir('asc'); }
+  };
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return openExternal;
+    const sign = sortDir === 'asc' ? 1 : -1;
+    const v = (i: ActionItem): number | string => {
+      switch (sortKey) {
+        case 'status':     return STATUS_ORDER[i.status ?? 'open'] ?? 99;
+        case 'priority':   return PRIORITY_ORDER[i.priority ?? 'medium'] ?? 99;
+        case 'urgency':    return URGENCY_ORDER[i.urgencyTier ?? 'none'] ?? 99;
+        case 'owner':      return (i.assignee ?? '~~~').toLowerCase();
+        case 'task':       return i.title.toLowerCase();
+        case 'days':       return daysOutstanding(i.createdAt) ?? -1;
+        case 'due':        return i.dueDate ? new Date(i.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        case 'importance': return -importanceScore(i); // higher score first under default asc
+        default:           return '';
+      }
+    };
+    return [...openExternal].sort((a, b) => {
+      const av = v(a), bv = v(b);
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
+  }, [openExternal, sortKey, sortDir]);
+
+  const cols = '100px 80px 100px 130px 1fr 60px 70px 28px';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="apex-page-header">
         <span className="apex-page-title">Follow-ups</span>
         <span className="cell-meta">
-          {groups.length} {groups.length === 1 ? 'person' : 'people'} · {totalOpen} open
+          {itemsByPerson.size} {itemsByPerson.size === 1 ? 'person' : 'people'} · {openExternal.length} open
         </span>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 24px' }}>
+      {/* Column header */}
+      <div className="apex-grid-header" style={{ gridTemplateColumns: cols }}>
+        <SortHeader label="Status"   k="status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Pri"      k="priority" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Urgency"  k="urgency"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Owner"    k="owner"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Task"     k="task"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Days"     k="days"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Due"      k="due"      sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <span></span>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--apex-text-faint)' }}>Loading…</div>
-        ) : groups.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--apex-text-faint)' }}>
             No open items assigned to other people.
           </div>
         ) : (
-          groups.map(({ name, items: list }) => (
-            <section key={name} style={{ borderBottom: '1px solid var(--apex-border)', padding: '14px 16px' }}>
-              <header style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--apex-text)', margin: 0 }}>{name}</h2>
-                <span style={{ fontSize: 11, color: 'var(--apex-text-muted)' }}>{list.length} open</span>
-                <a
-                  href={composeMailto(name, list)}
-                  className="btn btn-primary"
-                  style={{ marginLeft: 'auto', height: 24, padding: '0 10px', fontSize: 11, textDecoration: 'none' }}
+          sorted.map((it) => {
+            const due = dueLabel(it.dueDate);
+            const days = daysOutstanding(it.createdAt);
+            const status = it.status ?? 'open';
+            const priority = it.priority ?? 'medium';
+            const urgency = it.urgencyTier ?? 'none';
+            const ownerName = (it.assignee ?? '').trim();
+            const personItems = itemsByPerson.get(ownerName) ?? [it];
+            return (
+              <div
+                key={it.id}
+                className="apex-grid-row"
+                style={{ gridTemplateColumns: cols, alignItems: 'center', padding: '6px 14px' }}
+              >
+                <select
+                  className="inline-select"
+                  value={status}
+                  onChange={(e) => patchAction(it.id, { status: e.target.value })}
+                  style={{ height: 22, fontSize: 11 }}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 13 }}>mail</span>
-                  Compose follow-up
-                </a>
-              </header>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {list.map((it) => {
-                  const due = dueLabel(it.dueDate);
-                  return (
-                    <li
-                      key={it.id}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 90px 90px 70px',
-                        gap: 10,
-                        alignItems: 'center',
-                        padding: '5px 0',
-                        fontSize: 12,
-                        borderBottom: '1px solid rgba(255,255,255,0.03)',
-                      }}
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="deferred">Deferred</option>
+                  <option value="done">Done</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <select
+                  className="inline-select"
+                  value={priority}
+                  onChange={(e) => patchAction(it.id, { priority: e.target.value })}
+                  style={{ height: 22, fontSize: 11 }}
+                >
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <select
+                  className="inline-select"
+                  value={urgency}
+                  onChange={(e) => patchAction(it.id, { urgencyTier: e.target.value })}
+                  style={{ height: 22, fontSize: 11 }}
+                >
+                  <option value="urgent">Urgent</option>
+                  <option value="this_week">This Week</option>
+                  <option value="waiting_on">Waiting On</option>
+                  <option value="none">No urgency</option>
+                </select>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span className="avatar" style={{ width: 18, height: 18, fontSize: 8 }}>{initials(ownerName)}</span>
+                  <span className="cell-secondary" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {ownerName.split(' ')[0] || '—'}
+                  </span>
+                </span>
+                <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ color: 'var(--apex-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {it.title}
+                  </span>
+                  {it.meetingTitle && (
+                    <Link
+                      href={it.meetingId ? `/meetings/${it.meetingId}` : '#'}
+                      style={{ fontSize: 10.5, color: 'var(--apex-text-faint)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     >
-                      <span style={{ color: 'var(--apex-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {it.title}
-                      </span>
-                      <span className={`badge sev-${it.priority ?? 'medium'}`} style={{ fontSize: 10 }}>
-                        {(it.priority ?? '—').toUpperCase()}
-                      </span>
-                      <span style={{ fontSize: 10.5, color: 'var(--apex-text-muted)' }}>
-                        {it.urgencyTier && it.urgencyTier !== 'none' ? it.urgencyTier.replace('_', ' ') : '—'}
-                      </span>
-                      <span style={{ fontSize: 10.5, color: dueColor(due.tone), textAlign: 'right' }}>
-                        {due.label}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--apex-text-faint)' }}>
-                {list[0]?.meetingTitle && (
-                  <Link href={`/meetings/${list[0].meetingId}`} style={{ color: 'var(--apex-text-faint)', textDecoration: 'none' }}>
-                    Most recent: {list[0].meetingTitle}
-                  </Link>
-                )}
+                      from {it.meetingTitle}
+                    </Link>
+                  )}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--apex-text-muted)', textAlign: 'right' }}>
+                  {days === null ? '—' : `${days}d`}
+                </span>
+                <span style={{ fontSize: 10.5, color: dueColor(due.tone), textAlign: 'right' }}>
+                  {due.label}
+                </span>
+                <a
+                  href={composeMailto(ownerName, personItems)}
+                  title={`Compose follow-up to ${ownerName} (${personItems.length} item${personItems.length === 1 ? '' : 's'})`}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 22, color: 'var(--apex-text-faint)', textDecoration: 'none' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--apex-primary-bright)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--apex-text-faint)'; }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>mail</span>
+                </a>
               </div>
-            </section>
-          ))
+            );
+          })
         )}
       </div>
     </div>
