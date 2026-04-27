@@ -67,6 +67,13 @@ function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
 }
 
+// Most meeting titles follow the pattern "YYYY-MM-DD - <Series Name>" (Drive
+// doc convention). Strip the date prefix for grouping/filtering by series.
+function seriesName(title: string): string {
+  const m = title.match(/^\d{4}-\d{2}-\d{2}\s*[-–:]\s*(.+)$/);
+  return (m ? m[1] : title).trim();
+}
+
 export default function MeetingsPage() {
   return (
     <Suspense fallback={<div style={{ padding: 32, fontSize: 12, color: 'var(--apex-text-faint)' }}>Loading…</div>}>
@@ -88,6 +95,7 @@ function MeetingsInner() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<MeetingSortKey>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [seriesFilter, setSeriesFilter] = useState<string>('');
 
   useEffect(() => {
     Promise.all([
@@ -110,16 +118,31 @@ function MeetingsInner() {
       .catch(() => setSelectedActions([]));
   }, [selected]);
 
+  // Distinct meeting series (date-prefix stripped) with per-series counts.
+  const seriesOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of meetings) {
+      const s = seriesName(m.title);
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [meetings]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return meetings;
-    const q = search.toLowerCase();
-    return meetings.filter(
-      (m) =>
-        m.title.toLowerCase().includes(q) ||
-        (m.companyName?.toLowerCase().includes(q) ?? false) ||
-        (m.aiSummary?.toLowerCase().includes(q) ?? false),
-    );
-  }, [meetings, search]);
+    let r = meetings;
+    if (seriesFilter) r = r.filter((m) => seriesName(m.title) === seriesFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      r = r.filter(
+        (m) =>
+          m.title.toLowerCase().includes(q) ||
+          (m.companyName?.toLowerCase().includes(q) ?? false) ||
+          (m.aiSummary?.toLowerCase().includes(q) ?? false),
+      );
+    }
+    return r;
+  }, [meetings, search, seriesFilter]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, Meeting[]>();
@@ -196,7 +219,29 @@ function MeetingsInner() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)', minWidth: 0 }}>
       <div className="apex-page-header">
         <span className="apex-page-title">All Meetings</span>
-        <Link href="/import" className="btn btn-primary">
+        <select
+          className="inline-select"
+          value={seriesFilter}
+          onChange={(e) => setSeriesFilter(e.target.value)}
+          title="Filter by meeting name (series)"
+          style={{ marginLeft: 12, height: 26, fontSize: 11.5, maxWidth: 280 }}
+        >
+          <option value="">All meeting names ({meetings.length})</option>
+          {seriesOptions.map(([name, count]) => (
+            <option key={name} value={name}>{name} ({count})</option>
+          ))}
+        </select>
+        {seriesFilter && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSeriesFilter('')}
+            style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}
+            title="Clear filter"
+          >
+            Clear
+          </button>
+        )}
+        <Link href="/import" className="btn btn-primary" style={{ marginLeft: 'auto' }}>
           <span className="material-symbols-outlined">add</span>
           Import
         </Link>
