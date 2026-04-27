@@ -34,6 +34,17 @@ function formatDate(dateStr: string | null): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
 }
 
+// Many meeting titles start with a YYYY-MM-DD prefix (the Drive doc convention).
+// Use that as a fallback when meetingDate isn't set in the row.
+function parseDateFromTitle(title: string): string | null {
+  const m = title.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+function effectiveDate(m: { meetingDate: string | null; title: string }): string | null {
+  return m.meetingDate ?? parseDateFromTitle(m.title);
+}
+
 function isThisWeek(dateStr: string | null): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
@@ -69,7 +80,7 @@ function initials(name: string | null | undefined): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '·';
 }
 
-type MtgSortKey = 'date' | 'title' | 'company' | 'ppl' | 'act' | null;
+type MtgSortKey = 'date' | 'title' | 'act' | null;
 type ActSortKey = 'status' | 'owner' | 'task' | 'due' | null;
 
 export default function DashboardClient() {
@@ -99,8 +110,8 @@ export default function DashboardClient() {
   const recentMeetings = useMemo(() =>
     [...meetings]
       .sort((a, b) => {
-        const ad = a.meetingDate ? new Date(a.meetingDate).getTime() : 0;
-        const bd = b.meetingDate ? new Date(b.meetingDate).getTime() : 0;
+        const ad = effectiveDate(a) ? new Date(effectiveDate(a)!).getTime() : 0;
+        const bd = effectiveDate(b) ? new Date(effectiveDate(b)!).getTime() : 0;
         return bd - ad;
       })
       .slice(0, 30),
@@ -123,12 +134,10 @@ export default function DashboardClient() {
     const sign = mtgDir === 'asc' ? 1 : -1;
     const v = (m: Meeting): number | string => {
       switch (mtgSort) {
-        case 'date':    return m.meetingDate ? new Date(m.meetingDate).getTime() : 0;
-        case 'title':   return m.title.toLowerCase();
-        case 'company': return (m.companyName ?? '~~~').toLowerCase();
-        case 'ppl':     return Array.isArray(m.participants) ? m.participants.length : 0;
-        case 'act':     return actionCounts[m.id] ?? 0;
-        default:        return '';
+        case 'date':  { const d = effectiveDate(m); return d ? new Date(d).getTime() : 0; }
+        case 'title': return m.title.toLowerCase();
+        case 'act':   return actionCounts[m.id] ?? 0;
+        default:      return '';
       }
     };
     return [...recentMeetings].sort((a, b) => {
@@ -206,12 +215,10 @@ export default function DashboardClient() {
         <Link href="/meetings" className="filter-btn">View all</Link>
       </div>
 
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}>
-        <SortHeader label="Date"    k="date"    sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
-        <SortHeader label="Title"   k="title"   sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
-        <SortHeader label="Company" k="company" sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
-        <SortHeader label="Ppl"     k="ppl"     sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} align="right" />
-        <SortHeader label="Act"     k="act"     sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} align="right" />
+      <div className="apex-grid-header" style={{ gridTemplateColumns: '70px 1fr 50px' }}>
+        <SortHeader label="Date"  k="date"  sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
+        <SortHeader label="Title" k="title" sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} />
+        <SortHeader label="Act"   k="act"   sortKey={mtgSort} sortDir={mtgDir} onSort={onMtgSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -219,19 +226,16 @@ export default function DashboardClient() {
           <EmptyState message="No meetings yet" />
         ) : (
           sortedRecentMeetings.map((m) => {
-            const parts = Array.isArray(m.participants) ? m.participants : [];
             const ac = actionCounts[m.id] ?? 0;
             return (
               <Link
                 key={m.id}
                 href={`/meetings/${m.id}`}
                 className="apex-grid-row"
-                style={{ gridTemplateColumns: '64px 1fr 130px 50px 50px' }}
+                style={{ gridTemplateColumns: '70px 1fr 50px' }}
               >
-                <span className="cell-meta">{formatDate(m.meetingDate)}</span>
+                <span className="cell-meta">{formatDate(effectiveDate(m))}</span>
                 <span className="cell-primary">{m.title}</span>
-                <span className="cell-secondary">{m.companyName ?? '—'}</span>
-                <span className="cell-meta" style={{ textAlign: 'right' }}>{parts.length || '—'}</span>
                 <span className="cell-meta" style={{ textAlign: 'right', color: ac > 0 ? 'var(--apex-primary-bright)' : undefined }}>
                   {ac > 0 ? ac : '—'}
                 </span>
@@ -251,11 +255,11 @@ export default function DashboardClient() {
         <Link href="/action-items" className="filter-btn">View all</Link>
       </div>
 
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '64px 90px 1fr 80px' }}>
-        <SortHeader label="Status" k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Owner"  k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Task"   k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
-        <SortHeader label="Due"    k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
+      <div className="apex-grid-header" style={{ gridTemplateColumns: '28px 90px 1fr 80px' }}>
+        <SortHeader label="St"    k="status" sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Owner" k="owner"  sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Task"  k="task"   sortKey={actSort} sortDir={actDir} onSort={onActSort} />
+        <SortHeader label="Due"   k="due"    sortKey={actSort} sortDir={actDir} onSort={onActSort} align="right" />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -270,14 +274,19 @@ export default function DashboardClient() {
                 key={a.id}
                 href="/action-items"
                 className="apex-grid-row"
-                style={{ gridTemplateColumns: '64px 90px 1fr 80px' }}
+                style={{ gridTemplateColumns: '28px 90px 1fr 80px' }}
               >
                 <span
                   className={`badge badge-${status}`}
                   onClick={(e) => { e.preventDefault(); handleStatusCycle(a, e); }}
-                  title="Click to cycle"
+                  title={`${status.replace('_', ' ').toUpperCase()} — click to cycle`}
+                  style={{
+                    width: 20, height: 20, padding: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700,
+                  }}
                 >
-                  {status.replace('_', ' ')}
+                  {status === 'in_progress' ? 'P' : status.charAt(0).toUpperCase()}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <span className="avatar" style={{ width: 18, height: 18, fontSize: 8 }}>{initials(a.assignee)}</span>
