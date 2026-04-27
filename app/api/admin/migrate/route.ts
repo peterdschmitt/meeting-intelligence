@@ -135,6 +135,23 @@ const STATEMENTS = [
   `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS kind TEXT`,
   `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS exclude_from_tasks BOOLEAN DEFAULT FALSE`,
   `ALTER TABLE meeting_attendees ADD COLUMN IF NOT EXISTS email TEXT`,
+
+  // Today's meetings prep (2026-04-27)
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS ics_uid TEXT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS meetings_ics_uid_unique ON meetings (ics_uid) WHERE ics_uid IS NOT NULL`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS start_at TIMESTAMPTZ`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS end_at TIMESTAMPTZ`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS calendar_source TEXT`,
+  `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS join_url TEXT`,
+  `CREATE TABLE IF NOT EXISTS meeting_prep_guides (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+     guide JSONB NOT NULL,
+     input_hash TEXT NOT NULL,
+     model TEXT NOT NULL,
+     generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS meeting_prep_guides_meeting_idx ON meeting_prep_guides (meeting_id, generated_at DESC)`,
 ];
 
 function authorize(request: NextRequest): NextResponse | null {

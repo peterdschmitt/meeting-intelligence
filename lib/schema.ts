@@ -46,6 +46,12 @@ export const meetings = pgTable('meetings', {
   asyncableMinutes: integer('asyncable_minutes'),
   tangentMinutes: integer('tangent_minutes'),
   improvementNote: text('improvement_note'),
+  // ICS-sourced upcoming meetings
+  icsUid: text('ics_uid').unique(),
+  startAt: timestamp('start_at', { withTimezone: true }),
+  endAt: timestamp('end_at', { withTimezone: true }),
+  calendarSource: text('calendar_source'),
+  joinUrl: text('join_url'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -139,6 +145,15 @@ export const actionItems = pgTable('action_items', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+export const meetingPrepGuides = pgTable('meeting_prep_guides', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+  guide: text('guide').notNull(), // JSON-encoded; jsonb-typed in Postgres via migration
+  inputHash: text('input_hash').notNull(),
+  model: text('model').notNull(),
+  generatedAt: timestamp('generated_at').defaultNow().notNull(),
+});
+
 export const statusHistory = pgTable('status_history', {
   id: uuid('id').primaryKey().defaultRandom(),
   actionItemId: uuid('action_item_id').notNull().references(() => actionItems.id, { onDelete: 'cascade' }),
@@ -182,3 +197,5 @@ export type NewRisk = typeof risks.$inferInsert;
 export type NewOpportunity = typeof opportunities.$inferInsert;
 export type NewMeetingPrepItem = typeof meetingPrepItems.$inferInsert;
 export type NewActionItem = typeof actionItems.$inferInsert;
+export type MeetingPrepGuide = typeof meetingPrepGuides.$inferSelect;
+export type NewMeetingPrepGuide = typeof meetingPrepGuides.$inferInsert;
