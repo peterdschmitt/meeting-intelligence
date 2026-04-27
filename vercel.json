@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/import-drive",
-      "schedule": "0 12 * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }
