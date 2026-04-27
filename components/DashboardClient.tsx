@@ -5,6 +5,7 @@ import Link from 'next/link';
 import ResizableSplit from '@/components/ResizableSplit';
 import SortHeader from '@/components/SortHeader';
 import { formatDate } from '@/lib/format-date';
+import TodayMeetingsPanel from '@/components/TodayMeetingsPanel';
 
 interface Meeting {
   id: string;
@@ -106,6 +107,7 @@ export default function DashboardClient() {
   const [actSort, setActSort] = useState<ActSortKey>(null);
   const [actDir, setActDir] = useState<'asc' | 'desc'>('asc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [todayCount, setTodayCount] = useState(0);
   const [today] = useState(() =>
     new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())
   );
@@ -115,10 +117,12 @@ export default function DashboardClient() {
       fetch('/api/meetings').then((r) => r.ok ? r.json() : []),
       fetch('/api/action-items').then((r) => r.ok ? r.json() : []),
       fetch('/api/contacts').then((r) => r.ok ? r.json() : []),
-    ]).then(([m, a, c]) => {
+      fetch('/api/meetings/today').then((r) => r.ok ? r.json() : []),
+    ]).then(([m, a, c, t]) => {
       setMeetings(Array.isArray(m) ? m as Meeting[] : []);
       setActionItems(Array.isArray(a) ? a as ActionItem[] : []);
       setContacts(Array.isArray(c) ? c as Contact[] : []);
+      setTodayCount(Array.isArray(t) ? t.length : 0);
     }).catch(() => {});
   }, []);
 
@@ -515,6 +519,10 @@ export default function DashboardClient() {
           <span className="apex-stat-label">This Month</span>
         </div>
         <div className="apex-stat">
+          <span className={`apex-stat-value${todayCount > 0 ? ' accent' : ''}`}>{todayCount}</span>
+          <span className="apex-stat-label">Today</span>
+        </div>
+        <div className="apex-stat">
           <span className={`apex-stat-value${stats.open > 0 ? ' accent' : ''}`}>{stats.open}</span>
           <span className="apex-stat-label">Open</span>
         </div>
@@ -530,6 +538,12 @@ export default function DashboardClient() {
           <span className="apex-stat-label" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--apex-text-muted)' }}>{today}</span>
         </div>
       </div>
+
+      {todayCount > 0 && (
+        <div style={{ flexShrink: 0, padding: '0 16px 12px' }}>
+          <TodayMeetingsPanel />
+        </div>
+      )}
 
       {/* Two panes */}
       <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
