@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const primaryNav = [
+  { href: '/today',         icon: 'today',           label: 'Today' },
   { href: '/',              icon: 'space_dashboard', label: 'Inbox' },
   { href: '/meetings',      icon: 'event_note',      label: 'Meetings' },
   { href: '/action-items',  icon: 'checklist',       label: 'Action Items' },
@@ -33,6 +34,7 @@ export default function Sidebar() {
   const widthRef = useRef(width);
   const dragging = useRef(false);
   const [draggingState, setDraggingState] = useState(false);
+  const [todayCount, setTodayCount] = useState(0);
 
   useEffect(() => { widthRef.current = width; }, [width]);
 
@@ -42,6 +44,13 @@ export default function Sidebar() {
     if (Number.isFinite(saved) && saved >= MIN_WIDTH && saved <= MAX_WIDTH) {
       setWidth(saved);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/meetings/today')
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setTodayCount(Array.isArray(d) ? d.length : 0))
+      .catch(() => {});
   }, []);
 
   // Global drag listeners
@@ -139,7 +148,22 @@ export default function Sidebar() {
             title={item.label}
           >
             <span className="material-symbols-outlined">{item.icon}</span>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{item.label}</span>
+            {item.href === '/today' && todayCount > 0 && (
+              <span
+                className="nav-badge accent"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: 8,
+                  background: 'var(--apex-primary)',
+                  color: '#fff',
+                }}
+              >
+                {todayCount}
+              </span>
+            )}
           </Link>
         ))}
 
