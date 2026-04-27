@@ -102,7 +102,11 @@ export default function FollowUpsPage() {
       setItems(Array.isArray(d) ? d : []);
       const s = new Set<string>();
       for (const x of (Array.isArray(c) ? c : []) as { fullName?: string; excludeFromTasks?: boolean }[]) {
-        if (x.excludeFromTasks && x.fullName) s.add(x.fullName.toLowerCase());
+        if (!x.excludeFromTasks || !x.fullName) continue;
+        const full = x.fullName.toLowerCase().trim();
+        s.add(full);
+        const first = full.split(/\s+/)[0];
+        if (first) s.add(first);
       }
       setExcludedAssignees(s);
     }).catch(() => setItems([])).finally(() => setLoading(false));
@@ -124,12 +128,20 @@ export default function FollowUpsPage() {
   }, [items]);
 
   // Open items not assigned to Peter, and not assigned to anyone marked exclude-from-tasks.
+  const isExcluded = useCallback((assignee: string | null | undefined) => {
+    if (!assignee) return false;
+    const a = assignee.toLowerCase().trim();
+    if (excludedAssignees.has(a)) return true;
+    const first = a.split(/\s+/)[0];
+    return !!first && excludedAssignees.has(first);
+  }, [excludedAssignees]);
+
   const openExternal = useMemo(
     () => items
       .filter(isOpen)
       .filter((i) => !isMe(i.assignee) && (i.assignee ?? '').trim())
-      .filter((i) => !i.assignee || !excludedAssignees.has(i.assignee.toLowerCase())),
-    [items, excludedAssignees],
+      .filter((i) => !isExcluded(i.assignee)),
+    [items, isExcluded],
   );
 
   // For per-row "Compose follow-up" we need the full set of that person's open items.

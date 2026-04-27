@@ -133,21 +133,34 @@ export default function DashboardClient() {
     [meetings],
   );
 
-  // Lowercase set of contact names whose tasks should be hidden from task lists.
+  // Excluded-name set: include both full name and first-name token so a contact
+  // marked "excluded" filters out items whose assignee is just the first name.
   const excludedAssignees = useMemo(() => {
     const s = new Set<string>();
     for (const c of contacts) {
-      if (c.excludeFromTasks && c.fullName) s.add(c.fullName.toLowerCase());
+      if (!c.excludeFromTasks || !c.fullName) continue;
+      const full = c.fullName.toLowerCase().trim();
+      s.add(full);
+      const first = full.split(/\s+/)[0];
+      if (first) s.add(first);
     }
     return s;
   }, [contacts]);
 
+  const isExcludedAssignee = useCallback((assignee: string | null | undefined) => {
+    if (!assignee) return false;
+    const a = assignee.toLowerCase().trim();
+    if (excludedAssignees.has(a)) return true;
+    const first = a.split(/\s+/)[0];
+    return !!first && excludedAssignees.has(first);
+  }, [excludedAssignees]);
+
   const openActions = useMemo(() =>
     actionItems
       .filter((a) => a.status !== 'done' && a.status !== 'cancelled')
-      .filter((a) => !a.assignee || !excludedAssignees.has(a.assignee.toLowerCase()))
+      .filter((a) => !isExcludedAssignee(a.assignee))
       .slice(0, 60),
-    [actionItems, excludedAssignees],
+    [actionItems, isExcludedAssignee],
   );
 
   const actionCounts = useMemo(() => {
@@ -214,7 +227,7 @@ export default function DashboardClient() {
   };
 
   const stats = useMemo(() => {
-    const visible = actionItems.filter((a) => !a.assignee || !excludedAssignees.has(a.assignee.toLowerCase()));
+    const visible = actionItems.filter((a) => !isExcludedAssignee(a.assignee));
     return {
       week: meetings.filter((m) => isThisWeek(m.meetingDate)).length,
       month: meetings.filter((m) => isThisMonth(m.meetingDate)).length,
@@ -222,7 +235,7 @@ export default function DashboardClient() {
       overdue: visible.filter((a) => a.status !== 'done' && isOverdue(a.dueDate)).length,
       contacts: contacts.length,
     };
-  }, [meetings, actionItems, contacts, excludedAssignees]);
+  }, [meetings, actionItems, contacts, isExcludedAssignee]);
 
   const handleStatusCycle = useCallback(async (item: ActionItem, e: React.MouseEvent) => {
     e.stopPropagation();

@@ -23,6 +23,7 @@ interface Meeting {
   title: string;
   meetingDate: string | null;
   participants: string[] | string | null;
+  attendeeNames?: string[] | null;
   aiSummary?: string | null;
 }
 
@@ -100,8 +101,12 @@ function ContactsInner() {
   const meetingsByParticipant = useMemo(() => {
     const map = new Map<string, Meeting[]>();
     for (const m of meetings) {
-      const parts = parseParticipants(m.participants);
-      for (const p of parts) {
+      // Combine legacy participants + new attendee names so people show up
+      // whether the meeting was imported the old way or via the gdrive cron.
+      const names = new Set<string>();
+      for (const p of parseParticipants(m.participants)) names.add(p);
+      for (const n of (m.attendeeNames ?? [])) names.add(n);
+      for (const p of names) {
         const key = p.toLowerCase();
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(m);
@@ -161,6 +166,11 @@ function ContactsInner() {
     });
   }, [filtered, sortKey, sortDir, getMeetingsFor, getLastSeenTime]);
 
+  // Split into active vs excluded so the excluded set can fold into a collapsible section.
+  const activeContacts  = useMemo(() => sortedContacts.filter((c) => !c.excludeFromTasks), [sortedContacts]);
+  const excludedContacts = useMemo(() => sortedContacts.filter((c) =>  c.excludeFromTasks), [sortedContacts]);
+  const [excludedOpen, setExcludedOpen] = useState(false);
+
   const onSort = (key: NonNullable<ContactSortKey>) => {
     if (sortKey === key) {
       if (sortDir === 'asc') setSortDir('desc');
@@ -204,53 +214,75 @@ function ContactsInner() {
         ) : sortedContacts.length === 0 ? (
           <Empty msg="No contacts" />
         ) : (
-          sortedContacts.map((c) => {
-            const isSel = selected?.id === c.id;
-            const mc = getMeetingsFor(c).length;
-            return (
-              <div
-                key={c.id}
-                className={`apex-grid-row${isSel ? ' selected' : ''}`}
-                style={{ gridTemplateColumns: '32px 1fr 130px 110px 95px 60px 50px 80px', alignItems: 'center' }}
-                onClick={() => setSelected(isSel ? null : c)}
-              >
-                <span className="avatar">{initials(c.fullName)}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div className="cell-primary">{c.fullName}</div>
-                  {c.email && <div className="cell-meta" style={{ fontSize: 10 }}>{c.email}</div>}
-                </div>
-                <span className="cell-secondary">{c.companyName ?? '—'}</span>
-                <span className="cell-meta">{c.role ?? '—'}</span>
-                <select
-                  className="inline-select"
-                  value={c.kind ?? ''}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => patchContact(c.id, { kind: e.target.value || null })}
-                  style={{ height: 22, fontSize: 11 }}
+          <>
+            {activeContacts.map((c) => renderRow(c))}
+
+            {excludedContacts.length > 0 && (
+              <>
+                <div
+                  className="apex-group-header"
+                  onClick={() => setExcludedOpen((o) => !o)}
+                  style={{ cursor: 'pointer' }}
+                  title={excludedOpen ? 'Click to collapse' : 'Click to expand'}
                 >
-                  <option value="">—</option>
-                  <option value="team">Team</option>
-                  <option value="partner">Partner</option>
-                  <option value="external">External</option>
-                </select>
-                <span style={{ display: 'flex', justifyContent: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={c.excludeFromTasks ?? false}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => patchContact(c.id, { excludeFromTasks: e.target.checked })}
-                    title="Exclude this person's tasks from task lists"
-                  />
-                </span>
-                <span className="cell-meta" style={{ textAlign: 'right' }}>{mc > 0 ? mc : '—'}</span>
-                <span className="cell-meta" style={{ textAlign: 'right' }}>{getLastSeen(c)}</span>
-              </div>
-            );
-          })
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 9, color: 'var(--apex-text-faint)' }}>{excludedOpen ? '▼' : '▶'}</span>
+                    Excluded
+                  </span>
+                  <span>{excludedContacts.length} hidden from task lists</span>
+                </div>
+                {excludedOpen && excludedContacts.map((c) => renderRow(c))}
+              </>
+            )}
+          </>
         )}
       </div>
     </div>
   );
+
+  function renderRow(c: Contact) {
+    const isSel = selected?.id === c.id;
+    const mc = getMeetingsFor(c).length;
+    return (
+      <div
+        key={c.id}
+        className={`apex-grid-row${isSel ? ' selected' : ''}`}
+        style={{ gridTemplateColumns: '32px 1fr 130px 110px 95px 60px 50px 80px', alignItems: 'center', opacity: c.excludeFromTasks ? 0.6 : 1 }}
+        onClick={() => setSelected(isSel ? null : c)}
+      >
+        <span className="avatar">{initials(c.fullName)}</span>
+        <div style={{ minWidth: 0 }}>
+          <div className="cell-primary">{c.fullName}</div>
+          {c.email && <div className="cell-meta" style={{ fontSize: 10 }}>{c.email}</div>}
+        </div>
+        <span className="cell-secondary">{c.companyName ?? '—'}</span>
+        <span className="cell-meta">{c.role ?? '—'}</span>
+        <select
+          className="inline-select"
+          value={c.kind ?? ''}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => patchContact(c.id, { kind: e.target.value || null })}
+          style={{ height: 22, fontSize: 11 }}
+        >
+          <option value="">—</option>
+          <option value="team">Team</option>
+          <option value="partner">Partner</option>
+          <option value="external">External</option>
+        </select>
+        <span style={{ display: 'flex', justifyContent: 'center' }}>
+          <input
+            type="checkbox"
+            checked={c.excludeFromTasks ?? false}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => patchContact(c.id, { excludeFromTasks: e.target.checked })}
+            title="Exclude this person's tasks from task lists"
+          />
+        </span>
+        <span className="cell-meta" style={{ textAlign: 'right' }}>{mc > 0 ? mc : '—'}</span>
+        <span className="cell-meta" style={{ textAlign: 'right' }}>{getLastSeen(c)}</span>
+      </div>
+    );
+  }
 
   // Right — dossier
   const rightPane = selected ? (

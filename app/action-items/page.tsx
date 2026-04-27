@@ -287,7 +287,11 @@ function ActionItemsInner() {
         const cdata = await contactsRes.json() as { fullName?: string; excludeFromTasks?: boolean }[];
         const s = new Set<string>();
         for (const c of (Array.isArray(cdata) ? cdata : [])) {
-          if (c.excludeFromTasks && c.fullName) s.add(c.fullName.toLowerCase());
+          if (!c.excludeFromTasks || !c.fullName) continue;
+          const full = c.fullName.toLowerCase().trim();
+          s.add(full);
+          const first = full.split(/\s+/)[0];
+          if (first) s.add(first);
         }
         setExcludedAssignees(s);
       }
@@ -336,8 +340,15 @@ function ActionItemsInner() {
   ).length, [items]);
 
   const tabFiltered = useMemo(() => {
+    const isExcluded = (assignee: string | null | undefined) => {
+      if (!assignee) return false;
+      const a = assignee.toLowerCase().trim();
+      if (excludedAssignees.has(a)) return true;
+      const first = a.split(/\s+/)[0];
+      return !!first && excludedAssignees.has(first);
+    };
     return items
-      .filter((i) => !i.assignee || !excludedAssignees.has(i.assignee.toLowerCase()))
+      .filter((i) => !isExcluded(i.assignee))
       .filter((i) => {
       const snoozed = isSnoozedNow(i);
       const done = i.status === 'done' || i.status === 'cancelled';

@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { meetings, companies } from '@/lib/schema';
+import { meetings, companies, meetingAttendees } from '@/lib/schema';
 import { eq, desc, gte, sql } from 'drizzle-orm';
+
+// Pull all attendee names grouped by meeting in one query so the meetings list
+// can include them — used by the People page to compute Mtgs / Last per person.
+async function attendeeNamesByMeeting(): Promise<Map<string, string[]>> {
+  const rows = await db
+    .select({ meetingId: meetingAttendees.meetingId, name: meetingAttendees.name })
+    .from(meetingAttendees);
+  const m = new Map<string, string[]>();
+  for (const r of rows) {
+    if (!r.meetingId) continue;
+    const arr = m.get(r.meetingId) ?? [];
+    arr.push(r.name);
+    m.set(r.meetingId, arr);
+  }
+  return m;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,30 +68,34 @@ export async function GET(request: NextRequest) {
       updatedAt: meetings.updatedAt,
     };
 
+    const attendeeMap = await attendeeNamesByMeeting();
+    const decorate = <T extends { id: string; participants?: string[] | null }>(rows: T[]): (T & { attendeeNames: string[] })[] =>
+      rows.map((r) => ({ ...r, attendeeNames: attendeeMap.get(r.id) ?? [] }));
+
     if (filter === 'week') {
-      return NextResponse.json(
+      return NextResponse.json(decorate(
         await db
           .select(fullSelect)
           .from(meetings)
           .leftJoin(companies, eq(meetings.companyId, companies.id))
           .where(gte(meetings.meetingDate, sql`date_trunc('week', now())`))
           .orderBy(desc(meetings.meetingDate))
-      );
+      ));
     }
 
     if (filter === 'month') {
-      return NextResponse.json(
+      return NextResponse.json(decorate(
         await db
           .select(fullSelect)
           .from(meetings)
           .leftJoin(companies, eq(meetings.companyId, companies.id))
           .where(gte(meetings.meetingDate, sql`date_trunc('month', now())`))
           .orderBy(desc(meetings.meetingDate))
-      );
+      ));
     }
 
     const result = await query;
-    return NextResponse.json(result);
+    return NextResponse.json(decorate(result));
   } catch (error) {
     console.error('[GET /api/meetings]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
