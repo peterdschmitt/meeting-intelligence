@@ -35,7 +35,7 @@ const isMe = (assignee: string | null | undefined): boolean => {
 
 type Tab = 'today' | 'mine' | 'theirs' | 'untriaged' | 'snoozed' | 'done';
 type Group = 'urgency' | 'meeting' | 'owner' | 'priority' | 'status' | 'none';
-type SortKey = 'status' | 'priority' | 'owner' | 'task' | 'due' | 'importance' | null;
+type SortKey = 'status' | 'priority' | 'owner' | 'task' | 'due' | 'importance' | 'created' | 'days' | null;
 
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: 'today',     label: 'Today',         hint: 'Overdue + due today + just created' },
@@ -354,6 +354,8 @@ function ActionItemsInner() {
         case 'task':       return displayTitle(item.title, item.assignee).toLowerCase();
         case 'due':        return item.dueDate ? new Date(item.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
         case 'importance': return -importanceScore(item); // negate so default 'asc' sort puts most-important first
+        case 'created':    return item.createdAt ? new Date(item.createdAt).getTime() : 0;
+        case 'days':       return ageDays(item.createdAt) ?? -1;
         default:           return '';
       }
     };
@@ -407,8 +409,8 @@ function ActionItemsInner() {
 
   const showOwnerCol = tab !== 'mine' && tab !== 'untriaged';
   const gridCols = showOwnerCol
-    ? '24px 100px 84px 110px 1fr 70px 28px'
-    : '24px 100px 84px 1fr 70px 28px';
+    ? '24px 100px 84px 110px 1fr 70px 38px 70px 28px'
+    : '24px 100px 84px 1fr 70px 38px 70px 28px';
 
   // Sortable headers — click cycles asc → desc → off. Clicking forces a flat list.
   const onSort = (key: SortKey) => {
@@ -607,6 +609,8 @@ function ActionItemsInner() {
         )}
         <SortHeader label="Task"    k="task"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Due"     k="due"      sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Days"    k="days"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Created" k="created"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
         <span></span>
       </div>
 
@@ -755,6 +759,16 @@ function ActionItemsInner() {
                             {due.label}
                           </button>
                         )}
+                      </span>
+
+                      {/* Days outstanding */}
+                      <span className="cell-meta" style={{ fontSize: 11, textAlign: 'right' }}>
+                        {(() => { const d = ageDays(i.createdAt); return d === null ? '—' : `${d}d`; })()}
+                      </span>
+
+                      {/* Created date */}
+                      <span className="cell-meta" style={{ fontSize: 10.5, textAlign: 'right' }}>
+                        {i.createdAt ? formatDate(i.createdAt) : '—'}
                       </span>
 
                       {/* Snooze button */}

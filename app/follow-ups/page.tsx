@@ -79,7 +79,7 @@ function composeMailto(person: string, items: ActionItem[]): string {
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-type SortKey = 'status' | 'priority' | 'urgency' | 'owner' | 'task' | 'days' | 'due' | 'importance' | null;
+type SortKey = 'status' | 'priority' | 'urgency' | 'owner' | 'task' | 'days' | 'due' | 'created' | 'importance' | null;
 
 export default function FollowUpsPage() {
   const [items, setItems] = useState<ActionItem[]>([]);
@@ -146,6 +146,7 @@ export default function FollowUpsPage() {
         case 'owner':      return (i.assignee ?? '~~~').toLowerCase();
         case 'task':       return i.title.toLowerCase();
         case 'days':       return daysOutstanding(i.createdAt) ?? -1;
+        case 'created':    return i.createdAt ? new Date(i.createdAt).getTime() : 0;
         case 'due':        return i.dueDate ? new Date(i.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
         case 'importance': return -importanceScore(i); // higher score first under default asc
         default:           return '';
@@ -159,7 +160,8 @@ export default function FollowUpsPage() {
     });
   }, [openExternal, sortKey, sortDir]);
 
-  const cols = '100px 80px 100px 130px 1fr 60px 70px 28px';
+  // status | pri | urgency | owner | task | days | created | due | compose
+  const cols = '100px 80px 100px 130px 1fr 50px 70px 70px 28px';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -177,8 +179,9 @@ export default function FollowUpsPage() {
         <SortHeader label="Urgency"  k="urgency"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Owner"    k="owner"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Task"     k="task"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-        <SortHeader label="Days"     k="days"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
-        <SortHeader label="Due"      k="due"      sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Days"    k="days"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Created" k="created" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+        <SortHeader label="Due"     k="due"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
         <span></span>
       </div>
 
@@ -260,6 +263,9 @@ export default function FollowUpsPage() {
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--apex-text-muted)', textAlign: 'right' }}>
                   {days === null ? '—' : `${days}d`}
+                </span>
+                <span style={{ fontSize: 10.5, color: 'var(--apex-text-muted)', textAlign: 'right' }}>
+                  {it.createdAt ? formatDate(it.createdAt) : '—'}
                 </span>
                 <span style={{ fontSize: 10.5, color: dueColor(due.tone), textAlign: 'right' }}>
                   {due.label}
