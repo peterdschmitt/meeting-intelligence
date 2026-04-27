@@ -3,6 +3,18 @@
     {
       "path": "/api/cron/import-drive",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-calendar",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/sync-calendar",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/sync-calendar",
+      "schedule": "0 17 * * *"
     }
   ]
 }
