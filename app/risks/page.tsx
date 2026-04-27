@@ -22,9 +22,9 @@ type SortKey = 'risk' | 'severity' | 'status' | 'meeting' | 'date' | null;
 
 const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open' },
-  { value: 'mitigated', label: 'Mitigated' },
-  { value: 'accepted', label: 'Accepted' },
+  { value: 'open', label: 'O', full: 'Open' },
+  { value: 'mitigated', label: 'M', full: 'Mitigated' },
+  { value: 'accepted', label: 'A', full: 'Accepted' },
 ];
 
 export default function RisksListPage() {
@@ -83,7 +83,7 @@ export default function RisksListPage() {
         <span className="apex-page-title">Risks</span>
         <span className="cell-meta">{rows.length}</span>
       </div>
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '2.5fr 90px 110px 1fr 130px' }}>
+      <div className="apex-grid-header" style={{ gridTemplateColumns: '2.5fr 90px 50px 1fr 130px' }}>
         <SortHeader label="Risk" k="risk" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Severity" k="severity" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
@@ -97,13 +97,14 @@ export default function RisksListPage() {
           <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--apex-text-faint)' }}>No risks yet.</div>
         ) : (
           sorted.map((r) => (
-            <div key={r.id} className="apex-grid-row" style={{ gridTemplateColumns: '2.5fr 90px 110px 1fr 130px', minHeight: 32, padding: '6px 14px', alignItems: 'center' }}>
+            <div key={r.id} className="apex-grid-row" style={{ gridTemplateColumns: '2.5fr 90px 50px 1fr 130px', minHeight: 32, padding: '6px 14px', alignItems: 'center' }}>
               <span className="cell-primary" style={{ fontSize: 12 }}>{r.risk}</span>
               <span className={`badge sev-${r.severity ?? 'medium'}`} style={{ fontSize: 10 }}>{(r.severity ?? '—').toUpperCase()}</span>
               <select
                 value={r.status ?? 'open'}
                 onChange={(e) => setStatus(r.id, e.target.value)}
-                style={{ height: 24, fontSize: 11, padding: '0 6px', background: 'var(--apex-panel)', color: 'var(--apex-text-secondary)', border: '1px solid var(--apex-border)', borderRadius: 4 }}
+                title={`Status: ${(STATUS_OPTIONS.find((s) => s.value === r.status)?.full ?? 'Open')}`}
+                style={{ height: 24, fontSize: 11, padding: '0 4px', textAlign: 'center', background: 'var(--apex-panel)', color: 'var(--apex-text-secondary)', border: '1px solid var(--apex-border)', borderRadius: 4 }}
               >
                 {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>

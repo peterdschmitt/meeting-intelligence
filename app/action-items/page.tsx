@@ -432,8 +432,8 @@ function ActionItemsInner() {
 
   const showOwnerCol = tab !== 'mine' && tab !== 'untriaged';
   const gridCols = showOwnerCol
-    ? '24px 100px 84px 110px 1fr 70px 38px 70px 28px'
-    : '24px 100px 84px 1fr 70px 38px 70px 28px';
+    ? '24px 38px 38px 110px 1fr 70px 38px 70px 28px'
+    : '24px 38px 38px 1fr 70px 38px 70px 28px';
 
   // Sortable headers — click cycles asc → desc → off. Clicking forces a flat list.
   const onSort = (key: SortKey) => {
@@ -625,8 +625,8 @@ function ActionItemsInner() {
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Checkbox checked={allSelected} onChange={toggleSelectAll} aria-label="Select all" />
         </span>
-        <SortHeader label="Status"  k="status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-        <SortHeader label="Pri"     k="priority" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="St"   k="status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Pri"  k="priority" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         {showOwnerCol && (
           <SortHeader label="Owner" k="owner" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         )}
@@ -691,34 +691,36 @@ function ActionItemsInner() {
                       >
                         <Checkbox checked={isChecked} onChange={() => toggleSelect(i.id)} />
                       </span>
-                      {/* Status — native dropdown */}
+                      {/* Status — native dropdown (compact codes) */}
                       <select
                         value={status}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => { e.stopPropagation(); patchItem(i.id, { status: e.target.value }); }}
                         className={`badge badge-${status}`}
-                        title="Change status"
+                        title={`Status: ${status.replace('_', ' ')}`}
+                        style={{ textAlign: 'center' }}
                       >
-                        <option value="open">Open</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="done">Done</option>
-                        <option value="blocked">Blocked</option>
-                        <option value="deferred">Deferred</option>
-                        <option value="cancelled">Cancelled</option>
+                        <option value="open">O</option>
+                        <option value="in_progress">IP</option>
+                        <option value="done">Dn</option>
+                        <option value="blocked">B</option>
+                        <option value="deferred">De</option>
+                        <option value="cancelled">X</option>
                       </select>
 
-                      {/* Priority — native dropdown */}
+                      {/* Priority — native dropdown (compact codes) */}
                       <select
                         value={priority}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => { e.stopPropagation(); patchItem(i.id, { priority: e.target.value }); }}
                         className={`badge priority-${priority}`}
-                        title="Change priority"
+                        title={`Priority: ${priority}`}
+                        style={{ textAlign: 'center' }}
                       >
-                        <option value="critical">Critical</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
+                        <option value="critical">C</option>
+                        <option value="high">H</option>
+                        <option value="medium">M</option>
+                        <option value="low">L</option>
                       </select>
 
                       {showOwnerCol && (

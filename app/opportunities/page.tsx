@@ -19,10 +19,10 @@ interface Row {
 type SortKey = 'opportunity' | 'status' | 'meeting' | 'date' | null;
 
 const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open' },
-  { value: 'pursuing', label: 'Pursuing' },
-  { value: 'won', label: 'Won' },
-  { value: 'dropped', label: 'Dropped' },
+  { value: 'open', label: 'O', full: 'Open' },
+  { value: 'pursuing', label: 'P', full: 'Pursuing' },
+  { value: 'won', label: 'W', full: 'Won' },
+  { value: 'dropped', label: 'D', full: 'Dropped' },
 ];
 
 export default function OpportunitiesListPage() {
@@ -80,7 +80,7 @@ export default function OpportunitiesListPage() {
         <span className="apex-page-title">Opportunities</span>
         <span className="cell-meta">{rows.length}</span>
       </div>
-      <div className="apex-grid-header" style={{ gridTemplateColumns: '2.5fr 110px 1.5fr 1fr 130px' }}>
+      <div className="apex-grid-header" style={{ gridTemplateColumns: '2.5fr 50px 1.5fr 1fr 130px' }}>
         <SortHeader label="Opportunity" k="opportunity" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--apex-text-muted)', textTransform: 'uppercase' }}>Next step</span>
@@ -94,12 +94,13 @@ export default function OpportunitiesListPage() {
           <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--apex-text-faint)' }}>No opportunities yet.</div>
         ) : (
           sorted.map((r) => (
-            <div key={r.id} className="apex-grid-row" style={{ gridTemplateColumns: '2.5fr 110px 1.5fr 1fr 130px', minHeight: 32, padding: '6px 14px', alignItems: 'center' }}>
+            <div key={r.id} className="apex-grid-row" style={{ gridTemplateColumns: '2.5fr 50px 1.5fr 1fr 130px', minHeight: 32, padding: '6px 14px', alignItems: 'center' }}>
               <span className="cell-primary" style={{ fontSize: 12 }}>{r.opportunity}</span>
               <select
                 value={r.status ?? 'open'}
                 onChange={(e) => setStatus(r.id, e.target.value)}
-                style={{ height: 24, fontSize: 11, padding: '0 6px', background: 'var(--apex-panel)', color: 'var(--apex-text-secondary)', border: '1px solid var(--apex-border)', borderRadius: 4 }}
+                title={`Status: ${(STATUS_OPTIONS.find((s) => s.value === r.status)?.full ?? 'Open')}`}
+                style={{ height: 24, fontSize: 11, padding: '0 4px', textAlign: 'center', background: 'var(--apex-panel)', color: 'var(--apex-text-secondary)', border: '1px solid var(--apex-border)', borderRadius: 4 }}
               >
                 {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>

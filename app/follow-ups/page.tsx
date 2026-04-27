@@ -177,7 +177,7 @@ export default function FollowUpsPage() {
   }, [openExternal, sortKey, sortDir]);
 
   // status | pri | urgency | owner | task | days | created | due | compose
-  const cols = '100px 80px 100px 130px 1fr 50px 70px 70px 28px';
+  const cols = '38px 38px 60px 130px 1fr 50px 70px 70px 28px';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -190,9 +190,9 @@ export default function FollowUpsPage() {
 
       {/* Column header */}
       <div className="apex-grid-header" style={{ gridTemplateColumns: cols }}>
-        <SortHeader label="Status"   k="status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-        <SortHeader label="Pri"      k="priority" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-        <SortHeader label="Urgency"  k="urgency"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="St"   k="status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Pri"  k="priority" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <SortHeader label="Urg"  k="urgency"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Owner"    k="owner"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Task"     k="task"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
         <SortHeader label="Days"    k="days"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
@@ -228,36 +228,39 @@ export default function FollowUpsPage() {
                   className="inline-select"
                   value={status}
                   onChange={(e) => patchAction(it.id, { status: e.target.value })}
-                  style={{ height: 22, fontSize: 11 }}
+                  title={`Status: ${status.replace('_', ' ')}`}
+                  style={{ height: 22, fontSize: 11, padding: '0 4px', textAlign: 'center' }}
                 >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="deferred">Deferred</option>
-                  <option value="done">Done</option>
-                  <option value="cancelled">Cancelled</option>
+                  <option value="open">O</option>
+                  <option value="in_progress">IP</option>
+                  <option value="blocked">B</option>
+                  <option value="deferred">De</option>
+                  <option value="done">Dn</option>
+                  <option value="cancelled">X</option>
                 </select>
                 <select
                   className="inline-select"
                   value={priority}
                   onChange={(e) => patchAction(it.id, { priority: e.target.value })}
-                  style={{ height: 22, fontSize: 11 }}
+                  title={`Priority: ${priority}`}
+                  style={{ height: 22, fontSize: 11, padding: '0 4px', textAlign: 'center' }}
                 >
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  <option value="critical">C</option>
+                  <option value="high">H</option>
+                  <option value="medium">M</option>
+                  <option value="low">L</option>
                 </select>
                 <select
                   className="inline-select"
                   value={urgency}
                   onChange={(e) => patchAction(it.id, { urgencyTier: e.target.value })}
-                  style={{ height: 22, fontSize: 11 }}
+                  title={`Urgency: ${urgency.replace('_', ' ')}`}
+                  style={{ height: 22, fontSize: 11, padding: '0 4px', textAlign: 'center' }}
                 >
-                  <option value="urgent">Urgent</option>
-                  <option value="this_week">This Week</option>
-                  <option value="waiting_on">Waiting On</option>
-                  <option value="none">No urgency</option>
+                  <option value="urgent">U</option>
+                  <option value="this_week">TW</option>
+                  <option value="waiting_on">WO</option>
+                  <option value="none">—</option>
                 </select>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <span className="avatar" style={{ width: 18, height: 18, fontSize: 8 }}>{initials(ownerName)}</span>
