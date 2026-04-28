@@ -1,10 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { meetings, meetingAttendees, contacts } from '@/lib/schema';
+import { meetings, meetingAttendees, contacts, companies } from '@/lib/schema';
 import { eq, sql } from 'drizzle-orm';
 import { fetchAllFeedsForDay, type ParsedIcsEvent } from '@/lib/ics';
 import { dedupeEvents } from '@/lib/dedupe';
 import { generatePrep } from '@/lib/generate-prep';
+
+// Map an ICS calendar source identifier to the company name in the DB.
+const CALENDAR_TO_COMPANY: Record<string, string> = {
+  conversely: 'Conversely AI',
+  'pine-lake': 'Pine Lake Capital',
+  cranbrook:  'Cranbrook Analytics',
+};
+
+/** Resolve a company id by name. Cached per-request via the closure. */
+async function buildCompanyResolver(): Promise<(source: string | null) => string | null> {
+  const rows = await db.select({ id: companies.id, name: companies.name }).from(companies);
+  const byName = new Map(rows.map((r) => [r.name.toLowerCase(), r.id]));
+  return (source) => {
+    if (!source) return null;
+    const name = CALENDAR_TO_COMPANY[source];
+    if (!name) return null;
+    return byName.get(name.toLowerCase()) ?? null;
+  };
+}
 
 // Each prep guide LLM call takes ~5-15s; with up to ~10 meetings/day this
 // can approach 60s. Use the same maxDuration as import-drive.
@@ -31,7 +50,12 @@ interface UpsertResult {
   isNew: boolean;
 }
 
-async function upsertMeetingFromIcs(ev: ParsedIcsEvent): Promise<UpsertResult> {
+async function upsertMeetingFromIcs(
+  ev: ParsedIcsEvent,
+  resolveCompanyId: (source: string | null) => string | null,
+): Promise<UpsertResult> {
+  const companyId = resolveCompanyId(ev.calendarSource);
+
   const [existing] = await db
     .select({ id: meetings.id })
     .from(meetings)
@@ -49,6 +73,7 @@ async function upsertMeetingFromIcs(ev: ParsedIcsEvent): Promise<UpsertResult> {
         joinUrl: ev.joinUrl,
         platform: ev.platform,
         meetingDate: ev.startAt,
+        companyId,
       })
       .where(eq(meetings.id, existing.id));
     return { meetingId: existing.id, isNew: false };
@@ -66,6 +91,7 @@ async function upsertMeetingFromIcs(ev: ParsedIcsEvent): Promise<UpsertResult> {
       platform: ev.platform,
       meetingDate: ev.startAt,
       source: 'ics',
+      companyId,
     })
     .returning({ id: meetings.id });
 
@@ -118,11 +144,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { events, perFeed } = await fetchAllFeedsForDay(feeds);
   const survivors = dedupeEvents(events);
+  const resolveCompanyId = await buildCompanyResolver();
 
   const upsertResults: { meetingId: string; isNew: boolean }[] = [];
   for (const ev of survivors) {
     try {
-      const r = await upsertMeetingFromIcs(ev);
+      const r = await upsertMeetingFromIcs(ev, resolveCompanyId);
       await syncAttendees(r.meetingId, ev);
       upsertResults.push(r);
     } catch (err) {
