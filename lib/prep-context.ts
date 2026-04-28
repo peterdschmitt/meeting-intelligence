@@ -3,7 +3,7 @@ import {
   meetings, meetingPrepItems, meetingAttendees, actionItems, contacts, companies,
   decisions, risks, opportunities,
 } from '@/lib/schema';
-import { eq, and, ne, desc, sql } from 'drizzle-orm';
+import { eq, and, ne, desc, sql, inArray } from 'drizzle-orm';
 import { loadExcludedAssignees, isExcludedAssignee } from '@/lib/exclusions';
 import type { MeetingType } from '@/lib/classify-meeting';
 
@@ -130,7 +130,7 @@ export async function gatherPrepContext(
           kind: contacts.kind,
         })
         .from(contacts)
-        .where(sql`${contacts.id} = ANY(${contactIds})`)
+        .where(inArray(contacts.id, contactIds))
     : [];
 
   // Prior occurrence
@@ -176,7 +176,7 @@ export async function gatherPrepContext(
       status: actionItems.status,
     })
     .from(actionItems)
-    .where(sql`${actionItems.meetingId} = ANY(${meetingIdsForActions})`);
+    .where(inArray(actionItems.meetingId, meetingIdsForActions));
 
   const excluded = await loadExcludedAssignees();
   const openOnly = allActions.filter(
