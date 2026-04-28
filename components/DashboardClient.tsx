@@ -5,7 +5,7 @@ import Link from 'next/link';
 import ResizableSplit from '@/components/ResizableSplit';
 import SortHeader from '@/components/SortHeader';
 import { formatDate } from '@/lib/format-date';
-import TodayMeetingsPanel from '@/components/TodayMeetingsPanel';
+import TodayInboxPanel from '@/components/TodayInboxPanel';
 
 interface Meeting {
   id: string;
@@ -539,13 +539,15 @@ export default function DashboardClient() {
         </div>
       </div>
 
+      {/* Top quadrants: today's meetings (left) + selected meeting's prep guide (right).
+          Auto-hides when no meetings today so the bottom split takes the full area. */}
       {todayCount > 0 && (
-        <div style={{ flexShrink: 0, padding: '0 16px 12px' }}>
-          <TodayMeetingsPanel />
+        <div style={{ flex: '0 0 38%', minHeight: 240, overflow: 'hidden', borderBottom: '1px solid var(--apex-border)' }}>
+          <TodayInboxPanel />
         </div>
       )}
 
-      {/* Two panes */}
+      {/* Bottom quadrants: recent meetings + open actions (existing) */}
       <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
         <ResizableSplit
           left={leftPane}
