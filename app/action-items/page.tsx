@@ -34,7 +34,7 @@ const isMe = (assignee: string | null | undefined): boolean => {
 };
 
 type Tab = 'today' | 'mine' | 'theirs' | 'untriaged' | 'snoozed' | 'done';
-type Group = 'urgency' | 'meeting' | 'owner' | 'priority' | 'status' | 'none';
+type Group = 'urgency' | 'meeting' | 'owner' | 'priority' | 'status' | 'due_day' | 'none';
 type SortKey = 'status' | 'priority' | 'owner' | 'task' | 'due' | 'importance' | 'created' | 'days' | null;
 
 const TABS: { key: Tab; label: string; hint: string }[] = [
@@ -48,6 +48,7 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
 
 const GROUPS: { key: Group; label: string }[] = [
   { key: 'urgency',  label: 'By urgency' },
+  { key: 'due_day',  label: 'By due day' },
   { key: 'meeting',  label: 'By meeting' },
   { key: 'owner',    label: 'By owner' },
   { key: 'priority', label: 'By priority' },
@@ -205,8 +206,39 @@ function groupKeyOf(item: ActionItem, group: Group): string {
     case 'owner':    return item.assignee ?? '(Unassigned)';
     case 'priority': return (item.priority ?? 'medium').toUpperCase();
     case 'status':   return (item.status ?? 'open').replace('_', ' ').toUpperCase();
+    case 'due_day':  return dueDayLabel(item.dueDate);
     case 'none':     return '';
   }
+}
+
+// "Today" / "Tomorrow" / "Yesterday" / "Mon, Apr 27" / "Overdue" / "No due date"
+function dueDayLabel(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'No due date';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'No due date';
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const dayKey = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  if (dayKey < todayKey) return 'Overdue';
+  const tomorrowKey = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  if (dayKey === todayKey) return 'Today';
+  if (dayKey === tomorrowKey) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+  });
+}
+
+// Sort key for due-day buckets — Overdue first, then chronological, then "No due date" last.
+function dueDaySortKey(label: string): number {
+  if (label === 'Overdue') return -1000;
+  if (label === 'Today') return 0;
+  if (label === 'Tomorrow') return 1;
+  if (label === 'No due date') return 99999;
+  // Parse "Mon, Apr 27" back into a date offset from today
+  const d = Date.parse(label.replace(/^[A-Z][a-z]{2}, /, '') + ', ' + new Date().getFullYear());
+  if (isNaN(d)) return 9999;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d - today.getTime()) / 86400000);
 }
 
 function snoozeOptions(): { label: string; date: string }[] {
@@ -417,6 +449,8 @@ function ActionItemsInner() {
       entries = entries.sort((a, b) =>
         (PRIORITY_ORDER[a[0].toLowerCase()] ?? 9) - (PRIORITY_ORDER[b[0].toLowerCase()] ?? 9),
       );
+    } else if (group === 'due_day') {
+      entries = entries.sort((a, b) => dueDaySortKey(a[0]) - dueDaySortKey(b[0]));
     } else if (group === 'meeting') {
       entries = entries.sort((a, b) => {
         const aMax = Math.max(...a[1].map((i) => i.createdAt ? new Date(i.createdAt).getTime() : 0));

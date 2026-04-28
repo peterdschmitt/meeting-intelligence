@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import {
   meetings, meetingAttendees, actionItems, companies, meetingPrepGuides, contacts,
@@ -6,10 +6,16 @@ import {
 import { eq, and, ne, sql, desc } from 'drizzle-orm';
 import { loadExcludedAssignees, isExcludedAssignee } from '@/lib/exclusions';
 
-export async function GET(): Promise<NextResponse> {
-  const todayEst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  // ?days=N (default 1) — return today + (N-1) future days, all in ET.
+  const url = new URL(request.url);
+  const daysParam = parseInt(url.searchParams.get('days') ?? '1', 10);
+  const days = Math.min(Math.max(Number.isFinite(daysParam) ? daysParam : 1, 1), 30);
 
-  // Today's meetings: any row whose start_at falls today in ET.
+  const todayEst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const endEst = new Date(Date.now() + (days - 1) * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+  // Window: start of today (ET) → end of (today + days - 1) (ET).
   const rows = await db
     .select({
       id: meetings.id,
@@ -25,7 +31,7 @@ export async function GET(): Promise<NextResponse> {
     })
     .from(meetings)
     .leftJoin(companies, eq(meetings.companyId, companies.id))
-    .where(sql`(${meetings.startAt} AT TIME ZONE 'America/New_York')::date = ${todayEst}::date`)
+    .where(sql`(${meetings.startAt} AT TIME ZONE 'America/New_York')::date BETWEEN ${todayEst}::date AND ${endEst}::date`)
     .orderBy(meetings.startAt);
 
   const excluded = await loadExcludedAssignees();

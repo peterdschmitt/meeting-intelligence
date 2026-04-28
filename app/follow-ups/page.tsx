@@ -1,10 +1,32 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import SortHeader from '@/components/SortHeader';
 import { compareByImportance, importanceScore } from '@/lib/importance';
 import { formatDate } from '@/lib/format-date';
+
+// Friendly day label for a due-date string (Today / Tomorrow / Overdue / "Mon, Apr 27" / "No due date").
+function dueDayLabel(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'No due date';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'No due date';
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const dayKey = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  if (dayKey < todayKey) return 'Overdue';
+  if (dayKey === todayKey) return 'Today';
+  const tomorrowKey = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  if (dayKey === tomorrowKey) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+  });
+}
+
+function dueDaySortValue(dateStr: string | null | undefined): number {
+  if (!dateStr) return Number.MAX_SAFE_INTEGER;
+  const t = new Date(dateStr).getTime();
+  return isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+}
 
 interface ActionItem {
   id: string;
@@ -164,7 +186,11 @@ export default function FollowUpsPage() {
   };
 
   const sorted = useMemo(() => {
-    if (!sortKey) return openExternal;
+    // Default (no sort key clicked): order by due-day so the day-headers come out
+    // in chronological order — Overdue → Today → Tomorrow → upcoming → No due date.
+    if (!sortKey) {
+      return [...openExternal].sort((a, b) => dueDaySortValue(a.dueDate) - dueDaySortValue(b.dueDate));
+    }
     const sign = sortDir === 'asc' ? 1 : -1;
     const v = (i: ActionItem): number | string => {
       switch (sortKey) {
@@ -221,7 +247,7 @@ export default function FollowUpsPage() {
             No open items assigned to other people.
           </div>
         ) : (
-          sorted.map((it) => {
+          sorted.map((it, idx) => {
             const due = dueLabel(it.dueDate);
             const created = effectiveCreatedDate(it);
             const days = daysOutstanding(created);
@@ -230,9 +256,29 @@ export default function FollowUpsPage() {
             const urgency = it.urgencyTier ?? 'none';
             const ownerName = (it.assignee ?? '').trim();
             const personItems = itemsByPerson.get(ownerName) ?? [it];
+            const myDayLabel = dueDayLabel(it.dueDate);
+            const prevDayLabel = idx > 0 ? dueDayLabel(sorted[idx - 1].dueDate) : null;
+            const showDayHeader = !sortKey && myDayLabel !== prevDayLabel;
             return (
+              <Fragment key={it.id}>
+                {showDayHeader && (
+                  <div
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.14em',
+                      textTransform: 'uppercase',
+                      color: myDayLabel === 'Overdue' ? 'var(--apex-error)' : 'var(--apex-text-muted)',
+                      background: 'rgba(255,255,255,0.015)',
+                      borderTop: '1px solid var(--apex-border)',
+                      borderBottom: '1px solid var(--apex-border)',
+                    }}
+                  >
+                    {myDayLabel}
+                  </div>
+                )}
               <div
-                key={it.id}
                 className="apex-grid-row"
                 style={{ gridTemplateColumns: cols, alignItems: 'center', padding: '6px 14px' }}
               >
@@ -312,6 +358,7 @@ export default function FollowUpsPage() {
                   <span className="material-symbols-outlined" style={{ fontSize: 16 }}>mail</span>
                 </a>
               </div>
+              </Fragment>
             );
           })
         )}

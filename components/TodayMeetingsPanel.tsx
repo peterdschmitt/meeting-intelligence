@@ -47,7 +47,27 @@ function fmtGeneratedAt(iso: string | null): string {
   return `Generated ${fmt.format(d)} ET`;
 }
 
-export default function TodayMeetingsPanel({ initialMeetings }: { initialMeetings?: TodayMeeting[] } = {}) {
+// "Today" / "Tomorrow" / "Mon, Apr 27" — used as a section heading between days.
+function dayBucket(iso: string | null): string {
+  if (!iso) return 'No date';
+  const d = new Date(iso);
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const tomorrowKey = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const dayKey = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  if (dayKey === todayKey) return 'Today';
+  if (dayKey === tomorrowKey) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+  });
+}
+
+interface TodayMeetingsPanelProps {
+  initialMeetings?: TodayMeeting[];
+  /** How many days starting today to fetch+render. Defaults to 1 (today only). */
+  days?: number;
+}
+
+export default function TodayMeetingsPanel({ initialMeetings, days = 1 }: TodayMeetingsPanelProps = {}) {
   const [meetings, setMeetings] = useState<TodayMeeting[]>(initialMeetings ?? []);
   const [loading, setLoading] = useState(initialMeetings === undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -55,14 +75,14 @@ export default function TodayMeetingsPanel({ initialMeetings }: { initialMeeting
 
   useEffect(() => {
     if (initialMeetings !== undefined) return;
-    fetch('/api/meetings/today')
+    fetch(`/api/meetings/today?days=${days}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: TodayMeeting[]) => {
         setMeetings(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [initialMeetings]);
+  }, [initialMeetings, days]);
 
   // Default-expand if 1-2 meetings; collapse if 3+
   useEffect(() => {
@@ -149,11 +169,30 @@ export default function TodayMeetingsPanel({ initialMeetings }: { initialMeeting
         </span>
       </header>
 
-      {sortedMeetings.map((m) => {
+      {sortedMeetings.map((m, idx) => {
         const isOpen = expanded.has(m.id);
         const isRegen = regenerating.has(m.id);
+        const myDay = dayBucket(m.startAt);
+        const prevDay = idx > 0 ? dayBucket(sortedMeetings[idx - 1].startAt) : null;
+        const showDayHeader = days > 1 && myDay !== prevDay;
         return (
           <div key={m.id} style={{ borderBottom: '1px solid var(--apex-border)' }}>
+            {showDayHeader && (
+              <div
+                style={{
+                  padding: '8px 12px 6px',
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  color: myDay === 'Today' ? 'var(--apex-primary-bright)' : 'var(--apex-text-muted)',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderBottom: '1px solid var(--apex-border)',
+                }}
+              >
+                {myDay}
+              </div>
+            )}
             <button
               onClick={() => toggle(m.id)}
               style={{
