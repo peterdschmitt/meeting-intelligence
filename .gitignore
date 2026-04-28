@@ -52,3 +52,6 @@ next-env.d.ts
 # design references
 .design-ref/
 .env*.local
+
+# Claude Code runtime state (not source)
+.claude/
