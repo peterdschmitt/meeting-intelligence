@@ -315,6 +315,65 @@ function MeetingsInner() {
             );
           };
 
+          // Group a sorted list of meetings by ET date. Preserves input order;
+          // returns [{ key:'YYYY-MM-DD', label:'Mon, Apr 27', meetings:[...] }].
+          const groupByDay = (rows: Meeting[]): { key: string; label: string; meetings: Meeting[] }[] => {
+            const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const yesterdayKey = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const tomorrowKey = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const out: { key: string; label: string; meetings: Meeting[] }[] = [];
+            for (const m of rows) {
+              const d = effectiveMeetingDate(m);
+              const key = d
+                ? new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+                : 'no-date';
+              let label: string;
+              if (key === todayKey) label = 'Today';
+              else if (key === tomorrowKey) label = 'Tomorrow';
+              else if (key === yesterdayKey) label = 'Yesterday';
+              else if (key === 'no-date') label = 'No date';
+              else {
+                label = new Date(d!).toLocaleDateString('en-US', {
+                  weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+                });
+              }
+              const last = out[out.length - 1];
+              if (last && last.key === key) last.meetings.push(m);
+              else out.push({ key, label, meetings: [m] });
+            }
+            return out;
+          };
+
+          const dayHeader = (label: string, count: number) => (
+            <div
+              key={`day-${label}`}
+              style={{
+                padding: '6px 16px',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--apex-text-muted)',
+                background: 'rgba(255,255,255,0.015)',
+                borderTop: '1px solid var(--apex-border)',
+                borderBottom: '1px solid var(--apex-border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{label}</span>
+              <span style={{ color: 'var(--apex-text-faint)', fontWeight: 500 }}>
+                {count} {count === 1 ? 'mtg' : 'mtgs'}
+              </span>
+            </div>
+          );
+
+          const renderGroupedSection = (rows: Meeting[]) =>
+            groupByDay(rows).flatMap((g) => [
+              dayHeader(g.label, g.meetings.length),
+              ...g.meetings.map(renderRow),
+            ]);
+
           if (loading) return <Empty msg="Loading…" />;
 
           // When the user has clicked a sortable column header, ignore the
@@ -333,12 +392,12 @@ function MeetingsInner() {
               {!collapsed.has('upcoming') && (
                 upcoming.length === 0
                   ? <div style={{ padding: '14px 16px', fontSize: 11.5, color: 'var(--apex-text-faint)' }}>No upcoming meetings</div>
-                  : upcoming.map(renderRow)
+                  : renderGroupedSection(upcoming)
               )}
 
               {/* Past below */}
               {sectionHeader('past', 'Past', past.length)}
-              {!collapsed.has('past') && past.map(renderRow)}
+              {!collapsed.has('past') && renderGroupedSection(past)}
             </>
           );
         })()}
