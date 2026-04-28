@@ -152,6 +152,16 @@ const STATEMENTS = [
      generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS meeting_prep_guides_meeting_idx ON meeting_prep_guides (meeting_id, generated_at DESC)`,
+
+  // Backfill company_id for ICS-source meetings that the cron hasn't touched
+  // (e.g. past events the feed no longer returns). Idempotent — only sets
+  // company_id where it's currently null.
+  `UPDATE meetings SET company_id = (SELECT id FROM companies WHERE name = 'Conversely AI' LIMIT 1)
+     WHERE company_id IS NULL AND calendar_source = 'conversely'`,
+  `UPDATE meetings SET company_id = (SELECT id FROM companies WHERE name = 'Pine Lake Capital' LIMIT 1)
+     WHERE company_id IS NULL AND calendar_source = 'pine-lake'`,
+  `UPDATE meetings SET company_id = (SELECT id FROM companies WHERE name = 'Cranbrook Analytics' LIMIT 1)
+     WHERE company_id IS NULL AND calendar_source = 'cranbrook'`,
 ];
 
 function authorize(request: NextRequest): NextResponse | null {
