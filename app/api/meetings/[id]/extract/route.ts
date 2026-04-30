@@ -24,7 +24,7 @@ export async function POST(
       return NextResponse.json({ error: 'Meeting has no raw notes to extract from' }, { status: 400 });
     }
 
-    await reExtractAndSave(id, meeting.rawNotes);
+    await reExtractAndSave(id, meeting.rawNotes, { title: meeting.title });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[POST /api/meetings/[id]/extract]', error);

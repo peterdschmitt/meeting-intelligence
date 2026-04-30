@@ -19,6 +19,7 @@ import {
 } from '@/lib/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getOpenAI } from '@/lib/openai';
+import { routePromptKit, type MeetingClassificationInput } from '@/lib/meeting-type-router';
 
 interface ExtractedAttendee {
   name: string;
@@ -86,11 +87,24 @@ interface ExtractedRecap {
   effectiveness: ExtractedEffectiveness;
 }
 
-function buildSystemPrompt(today: string): string {
+function buildSystemPrompt(today: string, routed: ReturnType<typeof routePromptKit>): string {
   const year = today.slice(0, 4);
+  const { classification, kit } = routed;
+  const alternateText = classification.alternates.length > 0
+    ? classification.alternates.map((a) => `${a.type}:${a.score}`).join(', ')
+    : 'none';
   return `TODAY IS ${today}. ALL due_date values MUST be in YYYY-MM-DD format and MUST use year ${year} or later. NEVER emit a year before ${year} under any circumstance — this is the most common mistake to avoid. When the notes use relative dates ("next Tuesday", "by end of week", "in two weeks", "May", "next month"), resolve them against today (${today}).
 
 You are an expert meeting analyst. From raw notes (or a transcript), produce a complete structured recap.
+
+MEETING TYPE ROUTING:
+- Selected kit: ${kit.label} (${classification.type})
+- Confidence: ${classification.confidence}
+- Alternate classifications: ${alternateText}
+- Routing reasons: ${classification.reasons.join(' ')}
+
+Apply this meeting-type-specific post-meeting prompt:
+${kit.postMeetingPrompt}
 
 Respond ONLY with valid JSON — no markdown, no code fences, no explanation. The JSON object MUST contain every key listed below; use empty arrays / nulls when information is unavailable.
 
@@ -111,13 +125,14 @@ Keys:
 - "effectiveness": { "duration_minutes" (or null), "productive_minutes" (or null), "asyncable_minutes" (or null), "tangent_minutes" (or null), "improvement_note" (or null) }`;
 }
 
-async function runExtractionLLM(rawNotes: string): Promise<ExtractedRecap> {
+async function runExtractionLLM(rawNotes: string, context: MeetingClassificationInput = {}): Promise<ExtractedRecap> {
   const today = new Date().toISOString().slice(0, 10);
+  const routed = routePromptKit({ ...context, rawNotes });
   const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: buildSystemPrompt(today) },
-      { role: 'user', content: `Today is ${today}. Resolve every relative date against today and stamp every due_date in year ${today.slice(0, 4)} or later.\n\nRaw meeting notes:\n\n${rawNotes}` },
+      { role: 'system', content: buildSystemPrompt(today, routed) },
+      { role: 'user', content: `Today is ${today}. Resolve every relative date against today and stamp every due_date in year ${today.slice(0, 4)} or later.\n\nMeeting title: ${context.title ?? 'Unknown'}\nMeeting type selected: ${routed.kit.label}\n\nRaw meeting notes:\n\n${rawNotes}` },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.2,
@@ -326,12 +341,12 @@ async function persistRecap(meetingId: string, recap: ExtractedRecap, includeAct
   }
 }
 
-export async function extractAndSave(meetingId: string, rawNotes: string): Promise<void> {
-  const recap = await runExtractionLLM(rawNotes);
+export async function extractAndSave(meetingId: string, rawNotes: string, context: MeetingClassificationInput = {}): Promise<void> {
+  const recap = await runExtractionLLM(rawNotes, context);
   await persistRecap(meetingId, recap, /* includeActionItems */ true);
 }
 
-export async function reExtractAndSave(meetingId: string, rawNotes: string): Promise<void> {
-  const recap = await runExtractionLLM(rawNotes);
+export async function reExtractAndSave(meetingId: string, rawNotes: string, context: MeetingClassificationInput = {}): Promise<void> {
+  const recap = await runExtractionLLM(rawNotes, context);
   await persistRecap(meetingId, recap, /* includeActionItems */ false);
 }

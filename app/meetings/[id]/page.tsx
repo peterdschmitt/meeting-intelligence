@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { formatLongDate } from '@/lib/format-date';
 import TocSidebar, { type TocEntry } from '@/components/recap/TocSidebar';
 import Section from '@/components/recap/Section';
 import BulletProse from '@/components/recap/BulletProse';
@@ -54,11 +55,6 @@ interface MeetingDetail {
 
 interface Chapter { title: string; timestamp: string; bullets: string[] }
 
-function formatDate(s: string | null): string {
-  if (!s) return '—';
-  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(s));
-}
-
 function parseChapters(raw: string | null): Chapter[] {
   if (!raw) return [];
   try {
@@ -86,8 +82,8 @@ export default function MeetingDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    setLoading(true);
-    load().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading meeting detail is an external data sync.
+    void load().finally(() => setLoading(false));
   }, [load]);
 
   const reExtract = async () => {
@@ -122,7 +118,8 @@ export default function MeetingDetailPage() {
 
   const chapters = parseChapters(meeting.chapters);
   const keyQuestions = meeting.keyQuestions ?? [];
-  const hasTranscriptOrChapters = !!meeting.transcript || chapters.length > 0 || keyQuestions.length > 0;
+  const transcriptText = meeting.transcript || meeting.rawNotes;
+  const hasTranscriptOrChapters = !!transcriptText || chapters.length > 0 || keyQuestions.length > 0;
 
   const tocEntries: TocEntry[] = [
     { id: 'executive-summary', label: 'Executive Summary' },
@@ -135,7 +132,7 @@ export default function MeetingDetailPage() {
     { id: 'prep',              label: 'Next Meeting Prep', count: meeting.prepItems.length },
     { id: 'effectiveness',     label: 'Effectiveness' },
   ];
-  if (hasTranscriptOrChapters) tocEntries.push({ id: 'transcript', label: 'Transcript' });
+  if (hasTranscriptOrChapters) tocEntries.splice(1, 0, { id: 'transcript', label: transcriptText === meeting.rawNotes && !meeting.transcript ? 'Raw Notes' : 'Transcript' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--apex-bg)' }}>
@@ -157,7 +154,7 @@ export default function MeetingDetailPage() {
       </div>
 
       <div className="apex-statbar" style={{ flexShrink: 0 }}>
-        <div className="apex-stat"><span className="apex-stat-value mono" style={{ fontSize: 12 }}>{formatDate(meeting.meetingDate)}</span></div>
+        <div className="apex-stat"><span className="apex-stat-value mono" style={{ fontSize: 12 }}>{formatLongDate(meeting.meetingDate)}</span></div>
         {meeting.meetingTime && <div className="apex-stat"><span className="cell-meta">{meeting.meetingTime}</span></div>}
         {meeting.durationMinutes !== null && <div className="apex-stat"><span className="cell-meta">{meeting.durationMinutes} min</span></div>}
         {meeting.platform && <div className="apex-stat"><span className="cell-meta">{meeting.platform}</span></div>}
@@ -171,34 +168,16 @@ export default function MeetingDetailPage() {
             <BulletProse value={meeting.executiveSummary} onSave={updateExecSummary} placeholder="Click to add an executive summary…" />
           </Section>
 
-          <AttendeesSection meetingId={meeting.id} initial={meeting.attendees} />
-          <TopicsSection meetingId={meeting.id} initial={meeting.topics} />
-          <DecisionsSection meetingId={meeting.id} initial={meeting.decisions} />
-          <ActionItemsSection meetingId={meeting.id} initial={meeting.actionItems} />
-          <RisksSection meetingId={meeting.id} initial={meeting.risks} />
-          <OpportunitiesSection meetingId={meeting.id} initial={meeting.opportunities} />
-          <PrepSection meetingId={meeting.id} initial={meeting.prepItems} />
-          <EffectivenessSection
-            meetingId={meeting.id}
-            initial={{
-              durationMinutes: meeting.durationMinutes,
-              productiveMinutes: meeting.productiveMinutes,
-              asyncableMinutes: meeting.asyncableMinutes,
-              tangentMinutes: meeting.tangentMinutes,
-              improvementNote: meeting.improvementNote,
-            }}
-          />
-
           {hasTranscriptOrChapters && (
             <Section
-              id="transcript" title="Transcript & Chapters"
+              id="transcript" title={transcriptText === meeting.rawNotes && !meeting.transcript ? 'Raw Notes' : 'Transcript & Chapters'}
               actions={
                 <button className="btn btn-ghost" style={{ height: 24, padding: '0 8px', fontSize: 11 }} onClick={() => setTranscriptOpen((o) => !o)}>
                   {transcriptOpen ? 'Hide' : 'Show'}
                 </button>
               }
             >
-              {transcriptOpen ? (
+              {(transcriptOpen || !!transcriptText) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   {chapters.length > 0 && (
                     <div>
@@ -221,12 +200,17 @@ export default function MeetingDetailPage() {
                       </ul>
                     </div>
                   )}
-                  {meeting.transcript && (
+                  {transcriptText && (
                     <div>
-                      <h4 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--apex-text-muted)', margin: '0 0 6px 0' }}>Transcript</h4>
-                      <pre style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', margin: 0 }}>
-                        {meeting.transcript}
+                      <h4 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--apex-text-muted)', margin: '0 0 6px 0' }}>{meeting.transcript ? 'Transcript' : 'Raw Notes'}</h4>
+                      <pre style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--apex-text-secondary)', whiteSpace: 'pre-wrap', margin: 0, maxHeight: transcriptOpen ? 'none' : 420, overflow: 'hidden' }}>
+                        {transcriptText}
                       </pre>
+                      {!transcriptOpen && transcriptText.length > 3000 && (
+                        <button className="btn btn-ghost" style={{ marginTop: 10, height: 28, padding: '0 10px', fontSize: 11 }} onClick={() => setTranscriptOpen(true)}>
+                          Show full transcript
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -235,6 +219,24 @@ export default function MeetingDetailPage() {
               )}
             </Section>
           )}
+
+          <AttendeesSection meetingId={meeting.id} initial={meeting.attendees} />
+          <TopicsSection meetingId={meeting.id} initial={meeting.topics} />
+          <DecisionsSection meetingId={meeting.id} initial={meeting.decisions} />
+          <ActionItemsSection meetingId={meeting.id} initial={meeting.actionItems} />
+          <RisksSection meetingId={meeting.id} initial={meeting.risks} />
+          <OpportunitiesSection meetingId={meeting.id} initial={meeting.opportunities} />
+          <PrepSection meetingId={meeting.id} initial={meeting.prepItems} />
+          <EffectivenessSection
+            meetingId={meeting.id}
+            initial={{
+              durationMinutes: meeting.durationMinutes,
+              productiveMinutes: meeting.productiveMinutes,
+              asyncableMinutes: meeting.asyncableMinutes,
+              tangentMinutes: meeting.tangentMinutes,
+              improvementNote: meeting.improvementNote,
+            }}
+          />
         </main>
       </div>
 

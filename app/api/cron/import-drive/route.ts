@@ -95,7 +95,7 @@ async function importOne(drive: ReturnType<typeof google.drive>, doc: DriveDoc):
         gdriveFileId: doc.id,
       })
       .returning();
-    await extractAndSave(meeting.id, rawNotes);
+    await extractAndSave(meeting.id, rawNotes, { title: doc.name });
     return { fileId: doc.id, name: doc.name, status: 'imported', meetingId: meeting.id };
   } catch (e) {
     return {

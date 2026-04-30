@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    await extractAndSave(meeting.id, rawNotes);
+    await extractAndSave(meeting.id, rawNotes, { title });
 
     return NextResponse.json({ meetingId: meeting.id }, { status: 201 });
   } catch (error) {
